@@ -1,4 +1,4 @@
-name: "DAMA — Gercekci Ahsap Build APK"
+name: "DAMA Ahsap APK"
 
 on:
   push:
@@ -10,1187 +10,1080 @@ jobs:
     runs-on: ubuntu-latest
     steps:
 
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      # ═══════════════════════════════════════════════════════════
-      # ADIM 1 — TUM PROJE DOSYALARINI OLUSTUR (EOF sistemi)
-      # ═══════════════════════════════════════════════════════════
-      - name: Create full Android project
-        run: |
-          mkdir -p app/src/main/java/com/damax/game
-          mkdir -p app/src/main/res/{layout,values,drawable}
-          mkdir -p app/src/main/res/mipmap-anydpi-v26
-          mkdir -p app/src/main/res/{mipmap-hdpi,mipmap-xhdpi,mipmap-xxhdpi,mipmap-xxxhdpi}
-          mkdir -p gradle/wrapper
-
-          # settings.gradle
-          cat > settings.gradle << 'SEOF'
-          pluginManagement {
-              repositories { google(); mavenCentral(); gradlePluginPortal() }
-          }
-          dependencyResolutionManagement {
-              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-              repositories { google(); mavenCentral() }
-          }
-          rootProject.name = "DamaOyunu"
-          include ':app'
-          SEOF
-
-          # root build.gradle
-          cat > build.gradle << 'RGEOF'
-          plugins { id 'com.android.application' version '8.2.2' apply false }
-          RGEOF
-
-          # gradle.properties
-          cat > gradle.properties << 'GPEOF'
-          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
-          android.useAndroidX=true
-          android.enableJetifier=true
-          GPEOF
-
-          # gradle wrapper
-          cat > gradle/wrapper/gradle-wrapper.properties << 'WEOF'
-          distributionBase=GRADLE_USER_HOME
-          distributionPath=wrapper/dists
-          distributionUrl=https\://services.gradle.org/distributions/gradle-8.4-bin.zip
-          networkTimeout=10000
-          zipStoreBase=GRADLE_USER_HOME
-          zipStorePath=wrapper/dists
-          WEOF
-
-          # app/build.gradle
-          cat > app/build.gradle << 'AGEOF'
-          plugins { id 'com.android.application' }
-          android {
-              namespace 'com.damax.game'
-              compileSdk 34
-              defaultConfig {
-                  applicationId "com.damax.game"
-                  minSdk 24
-                  targetSdk 34
-                  versionCode 1
-                  versionName "1.0.0"
-              }
-              buildTypes {
-                  release { minifyEnabled false }
-                  debug   { debuggable true }
-              }
-              compileOptions {
-                  sourceCompatibility JavaVersion.VERSION_17
-                  targetCompatibility JavaVersion.VERSION_17
-              }
-              buildFeatures { viewBinding true }
-          }
-          dependencies {
-              implementation 'androidx.appcompat:appcompat:1.6.1'
-              implementation 'com.google.android.material:material:1.11.0'
-              implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-              implementation 'com.squareup.okhttp3:okhttp:4.12.0'
-              implementation 'com.google.code.gson:gson:2.10.1'
-          }
-          AGEOF
-
-          echo "-keep class com.damax.game.** { *; }" > app/proguard-rules.pro
-
-          # AndroidManifest
-          cat > app/src/main/AndroidManifest.xml << 'MEOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-              <uses-permission android:name="android.permission.INTERNET"/>
-              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
-              <uses-permission android:name="android.permission.VIBRATE"/>
-              <application
-                  android:allowBackup="true"
-                  android:icon="@mipmap/ic_launcher"
-                  android:label="@string/app_name"
-                  android:roundIcon="@mipmap/ic_launcher_round"
-                  android:supportsRtl="true"
-                  android:hardwareAccelerated="true"
-                  android:theme="@style/Theme.Dama">
-                  <activity android:name=".MainActivity" android:exported="true"
-                      android:screenOrientation="portrait">
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN"/>
-                          <category android:name="android.intent.category.LAUNCHER"/>
-                      </intent-filter>
-                  </activity>
-                  <activity android:name=".GameActivity" android:exported="false"
-                      android:screenOrientation="portrait"/>
-                  <activity android:name=".OnlineActivity" android:exported="false"
-                      android:screenOrientation="portrait"
-                      android:windowSoftInputMode="adjustResize"/>
-              </application>
-          </manifest>
-          MEOF
-
-          # strings.xml
-          cat > app/src/main/res/values/strings.xml << 'STREOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <resources>
-              <string name="app_name">Dama</string>
-              <string name="vs_ai">Bilgisayara Karsi</string>
-              <string name="vs_local">2 Oyuncu</string>
-              <string name="online">Online Oyna</string>
-              <string name="undo">Geri Al</string>
-              <string name="new_game">Yeni Oyun</string>
-              <string name="menu">Menu</string>
-              <string name="connect">Baglan</string>
-              <string name="create_room">Oda Olustur</string>
-              <string name="join_room">Odaya Katil</string>
-              <string name="server_hint">Sunucu IP (ornek: 192.168.1.5)</string>
-              <string name="room_code_hint">Oda Kodu</string>
-              <string name="name_hint">Adiniz</string>
-              <string name="send">Gonder</string>
-              <string name="chat_hint">Mesaj...</string>
-          </resources>
-          STREOF
-
-          # colors.xml
-          cat > app/src/main/res/values/colors.xml << 'CEOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <resources>
-              <color name="wood_border">#6B2F0A</color>
-              <color name="cell_dark">#C68642</color>
-              <color name="cell_light">#F5DEB3</color>
-              <color name="piece_dark_top">#8B3A1A</color>
-              <color name="piece_light_top">#E8C870</color>
-              <color name="ui_bg">#3D1C08</color>
-              <color name="ui_panel">#5C2E0E</color>
-              <color name="ui_text">#FFE4B5</color>
-              <color name="ui_text_dim">#C8A060</color>
-              <color name="ui_gold">#DAA520</color>
-              <color name="ui_bg_int">#3D1C08</color>
-              <color name="colorPrimary">#8B4513</color>
-              <color name="colorPrimaryDark">#3D1C08</color>
-              <color name="colorAccent">#DAA520</color>
-          </resources>
-          CEOF
-
-          # themes.xml
-          cat > app/src/main/res/values/themes.xml << 'TEOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <resources>
-              <style name="Theme.Dama" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-                  <item name="colorPrimary">@color/colorPrimary</item>
-                  <item name="colorPrimaryVariant">@color/wood_border</item>
-                  <item name="colorOnPrimary">@color/ui_text</item>
-                  <item name="colorSecondary">@color/ui_gold</item>
-                  <item name="android:colorBackground">@color/ui_bg</item>
-                  <item name="android:statusBarColor">@color/wood_border</item>
-                  <item name="android:navigationBarColor">@color/wood_border</item>
-                  <item name="android:windowLightStatusBar">false</item>
-                  <item name="android:textColor">@color/ui_text</item>
-              </style>
-          </resources>
-          TEOF
-
-          # drawables
-          cat > app/src/main/res/drawable/bg_panel.xml << 'D1EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <shape xmlns:android="http://schemas.android.com/apk/res/android">
-              <gradient android:startColor="#6B2F0A" android:endColor="#4A1F06" android:angle="135"/>
-              <stroke android:width="1dp" android:color="#DAA52044"/>
-              <corners android:radius="10dp"/>
-          </shape>
-          D1EOF
-
-          cat > app/src/main/res/drawable/bg_btn.xml << 'D2EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <shape xmlns:android="http://schemas.android.com/apk/res/android">
-              <gradient android:startColor="#8B4513" android:endColor="#6B2F0A" android:angle="180"/>
-              <stroke android:width="1dp" android:color="#DAA520"/>
-              <corners android:radius="8dp"/>
-          </shape>
-          D2EOF
-
-          cat > app/src/main/res/drawable/bg_btn_gold.xml << 'D3EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <shape xmlns:android="http://schemas.android.com/apk/res/android">
-              <gradient android:startColor="#DAA520" android:endColor="#B8860B" android:angle="180"/>
-              <stroke android:width="1dp" android:color="#FFD700"/>
-              <corners android:radius="8dp"/>
-          </shape>
-          D3EOF
-
-          cat > app/src/main/res/drawable/bg_input.xml << 'D4EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <shape xmlns:android="http://schemas.android.com/apk/res/android">
-              <solid android:color="#2A1005"/>
-              <stroke android:width="1dp" android:color="#8B4513"/>
-              <corners android:radius="6dp"/>
-          </shape>
-          D4EOF
-
-          cat > app/src/main/res/drawable/ic_launcher_foreground.xml << 'ICONF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <vector xmlns:android="http://schemas.android.com/apk/res/android"
-              android:width="108dp" android:height="108dp"
-              android:viewportWidth="108" android:viewportHeight="108">
-            <path android:fillColor="#8B4513" android:pathData="M0,0h108v108H0z"/>
-            <path android:fillColor="#C68642" android:pathData="M10,10h88v88H10z"/>
-            <path android:fillColor="#F5DEB3" android:pathData="M10,10h22v22H10zM54,10h22v22H54zM32,32h22v22H32zM76,32h22v22H76zM10,54h22v22H10zM54,54h22v22H54zM32,76h22v22H32zM76,76h22v22H76z"/>
-            <circle android:fillColor="#5C2008" cx="43" cy="32" r="14"/>
-            <circle android:fillColor="#8B3A1A" cx="43" cy="30" r="11"/>
-            <circle android:fillColor="#C0622A" cx="40" cy="27" r="5"/>
-            <circle android:fillColor="#B8860B" cx="65" cy="76" r="14"/>
-            <circle android:fillColor="#DAA520" cx="65" cy="74" r="11"/>
-            <circle android:fillColor="#FFD700" cx="62" cy="71" r="5"/>
-            <path android:fillColor="#6B2F0A" android:pathData="M10,10h88v3H10zM10,95h88v3H10zM10,10v88h3V10zM95,10v88h3V10z"/>
-          </vector>
-          ICONF
-
-          cat > app/src/main/res/drawable/ic_launcher_background.xml << 'ICONB'
-          <?xml version="1.0" encoding="utf-8"?>
-          <shape xmlns:android="http://schemas.android.com/apk/res/android">
-              <solid android:color="#8B4513"/>
-          </shape>
-          ICONB
-
-          # Adaptive icon — SADECE anydpi-v26 altinda
-          cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml << 'ADEOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-              <background android:drawable="@drawable/ic_launcher_background"/>
-              <foreground android:drawable="@drawable/ic_launcher_foreground"/>
-          </adaptive-icon>
-          ADEOF
-          cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml \
-             app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
-
-          # PNG ikonlar — density klasorleri icin Python ile uret
-          python3 << 'PYEOF'
-          import struct, zlib, os
-          def png(sz):
-              rows=[]
-              for y in range(sz):
-                  row=[0]
-                  for x in range(sz):
-                      r,g,b,a=0x8B,0x45,0x13,255
-                      brd=int(sz*0.08)
-                      if x<brd or x>=sz-brd or y<brd or y>=sz-brd:
-                          r,g,b=0x5C,0x20,0x08
-                      cx1,cy1,cr=int(sz*0.33),int(sz*0.33),int(sz*0.17)
-                      if (x-cx1)**2+(y-cy1)**2<cr**2: r,g,b=0x8B,0x3A,0x1A
-                      if (x-cx1)**2+(y-cy1)**2<(cr//2)**2: r,g,b=0xC0,0x62,0x2A
-                      cx2,cy2=int(sz*0.67),int(sz*0.67)
-                      if (x-cx2)**2+(y-cy2)**2<cr**2: r,g,b=0xDA,0xA5,0x20
-                      if (x-cx2)**2+(y-cy2)**2<(cr//2)**2: r,g,b=0xFF,0xD7,0x00
-                      row+=[r,g,b,a]
-                  rows.append(bytes(row))
-              def chunk(t,d):
-                  return struct.pack('>I',len(d))+t+d+struct.pack('>I',zlib.crc32(t+d)&0xffffffff)
-              hdr=struct.pack('>IIBBBBB',sz,sz,8,2,0,0,0)
-              return b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',hdr)+chunk(b'IDAT',zlib.compress(b''.join(rows)))+chunk(b'IEND',b'')
-          for folder,sz in [('mipmap-hdpi',48),('mipmap-xhdpi',72),('mipmap-xxhdpi',96),('mipmap-xxxhdpi',144)]:
-              p=f'app/src/main/res/{folder}'
-              os.makedirs(p,exist_ok=True)
-              d=png(sz)
-              open(f'{p}/ic_launcher.png','wb').write(d)
-              open(f'{p}/ic_launcher_round.png','wb').write(d)
-              print(f'{folder} {sz}px OK')
-          PYEOF
-
-          # Layouts
-          cat > app/src/main/res/layout/activity_main.xml << 'LMEOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-              android:layout_width="match_parent" android:layout_height="match_parent"
-              android:orientation="vertical" android:gravity="center"
-              android:background="@color/ui_bg" android:padding="24dp">
-              <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                  android:text="♟" android:textSize="56sp" android:textColor="@color/ui_gold"
-                  android:layout_marginBottom="4dp"/>
-              <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                  android:text="DAMA" android:textSize="36sp" android:textStyle="bold"
-                  android:textColor="@color/ui_text" android:letterSpacing="0.18"
-                  android:layout_marginBottom="2dp"/>
-              <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                  android:text="Gercekci Ahsap Dama" android:textSize="13sp"
-                  android:textColor="@color/ui_text_dim" android:layout_marginBottom="36dp"/>
-              <LinearLayout android:layout_width="260dp" android:layout_height="wrap_content"
-                  android:orientation="vertical" android:padding="18dp"
-                  android:background="@drawable/bg_panel">
-                  <Button android:id="@+id/btnVsAI"
-                      android:layout_width="match_parent" android:layout_height="52dp"
-                      android:text="@string/vs_ai" android:background="@drawable/bg_btn_gold"
-                      android:textColor="@color/ui_bg" android:textStyle="bold"
-                      android:textSize="14sp" android:layout_marginBottom="10dp"/>
-                  <Button android:id="@+id/btnLocal"
-                      android:layout_width="match_parent" android:layout_height="52dp"
-                      android:text="@string/vs_local" android:background="@drawable/bg_btn"
-                      android:textColor="@color/ui_text" android:textSize="13sp"
-                      android:layout_marginBottom="10dp"/>
-                  <Button android:id="@+id/btnOnline"
-                      android:layout_width="match_parent" android:layout_height="52dp"
-                      android:text="@string/online" android:background="@drawable/bg_btn"
-                      android:textColor="@color/ui_text" android:textSize="13sp"/>
-              </LinearLayout>
-              <LinearLayout android:layout_width="260dp" android:layout_height="wrap_content"
-                  android:orientation="horizontal" android:gravity="center"
-                  android:layout_marginTop="14dp">
-                  <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                      android:text="Zorluk: " android:textColor="@color/ui_text_dim"
-                      android:textSize="13sp"/>
-                  <Button android:id="@+id/btnEasy"
-                      android:layout_width="0dp" android:layout_height="36dp"
-                      android:layout_weight="1" android:text="Kolay"
-                      android:background="@drawable/bg_btn"
-                      android:textColor="@color/ui_text" android:textSize="11sp"
-                      android:layout_marginStart="4dp"/>
-                  <Button android:id="@+id/btnMed"
-                      android:layout_width="0dp" android:layout_height="36dp"
-                      android:layout_weight="1" android:text="Orta"
-                      android:background="@drawable/bg_btn_gold"
-                      android:textColor="@color/ui_bg" android:textSize="11sp"
-                      android:layout_marginStart="4dp"/>
-                  <Button android:id="@+id/btnHard"
-                      android:layout_width="0dp" android:layout_height="36dp"
-                      android:layout_weight="1" android:text="Zor"
-                      android:background="@drawable/bg_btn"
-                      android:textColor="@color/ui_text" android:textSize="11sp"
-                      android:layout_marginStart="4dp"/>
-              </LinearLayout>
-          </LinearLayout>
-          LMEOF
-
-          cat > app/src/main/res/layout/activity_game.xml << 'LGEOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-              android:layout_width="match_parent" android:layout_height="match_parent"
-              android:orientation="vertical" android:background="@color/ui_bg">
-              <LinearLayout android:layout_width="match_parent" android:layout_height="52dp"
-                  android:orientation="horizontal" android:gravity="center_vertical"
-                  android:paddingStart="12dp" android:paddingEnd="12dp"
-                  android:background="@color/wood_border">
-                  <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
-                      android:layout_weight="1" android:orientation="horizontal"
-                      android:gravity="center_vertical">
-                      <View android:layout_width="18dp" android:layout_height="18dp"
-                          android:background="@color/piece_dark_top" android:layout_marginEnd="6dp"/>
-                      <LinearLayout android:layout_width="wrap_content"
-                          android:layout_height="wrap_content" android:orientation="vertical">
-                          <TextView android:id="@+id/tvP1Name"
-                              android:layout_width="wrap_content" android:layout_height="wrap_content"
-                              android:text="Koyu" android:textColor="@color/ui_text"
-                              android:textSize="13sp" android:textStyle="bold"/>
-                          <TextView android:id="@+id/tvP1Count"
-                              android:layout_width="wrap_content" android:layout_height="wrap_content"
-                              android:text="12 tas" android:textColor="@color/ui_text_dim"
-                              android:textSize="10sp"/>
-                      </LinearLayout>
-                  </LinearLayout>
-                  <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
-                      android:orientation="vertical" android:gravity="center">
-                      <TextView android:id="@+id/tvTimer"
-                          android:layout_width="wrap_content" android:layout_height="wrap_content"
-                          android:text="inf" android:textColor="@color/ui_gold"
-                          android:textSize="20sp" android:textStyle="bold"
-                          android:gravity="center" android:minWidth="50dp"/>
-                      <TextView android:id="@+id/tvTurn"
-                          android:layout_width="wrap_content" android:layout_height="wrap_content"
-                          android:text="Senin Siran" android:textColor="@color/ui_text_dim"
-                          android:textSize="9sp" android:gravity="center"/>
-                  </LinearLayout>
-                  <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
-                      android:layout_weight="1" android:orientation="horizontal"
-                      android:gravity="center_vertical|end">
-                      <LinearLayout android:layout_width="wrap_content"
-                          android:layout_height="wrap_content" android:orientation="vertical"
-                          android:gravity="end">
-                          <TextView android:id="@+id/tvP2Name"
-                              android:layout_width="wrap_content" android:layout_height="wrap_content"
-                              android:text="Acik" android:textColor="@color/ui_text"
-                              android:textSize="13sp" android:textStyle="bold"/>
-                          <TextView android:id="@+id/tvP2Count"
-                              android:layout_width="wrap_content" android:layout_height="wrap_content"
-                              android:text="12 tas" android:textColor="@color/ui_text_dim"
-                              android:textSize="10sp"/>
-                      </LinearLayout>
-                      <View android:layout_width="18dp" android:layout_height="18dp"
-                          android:background="@color/piece_light_top" android:layout_marginStart="6dp"/>
-                  </LinearLayout>
-              </LinearLayout>
-              <com.damax.game.BoardView
-                  android:id="@+id/boardView"
-                  android:layout_width="match_parent"
-                  android:layout_height="0dp"
-                  android:layout_weight="1"/>
-              <LinearLayout android:layout_width="match_parent" android:layout_height="52dp"
-                  android:orientation="horizontal" android:gravity="center"
-                  android:background="@color/wood_border"
-                  android:paddingStart="8dp" android:paddingEnd="8dp">
-                  <Button android:id="@+id/btnUndo"
-                      android:layout_width="0dp" android:layout_height="40dp"
-                      android:layout_weight="1" android:text="@string/undo"
-                      android:background="@drawable/bg_btn"
-                      android:textColor="@color/ui_text" android:textSize="12sp"
-                      android:layout_marginEnd="4dp"/>
-                  <Button android:id="@+id/btnNewGame"
-                      android:layout_width="0dp" android:layout_height="40dp"
-                      android:layout_weight="1" android:text="@string/new_game"
-                      android:background="@drawable/bg_btn_gold"
-                      android:textColor="@color/ui_bg" android:textStyle="bold"
-                      android:textSize="12sp" android:layout_marginEnd="4dp"/>
-                  <Button android:id="@+id/btnMenu"
-                      android:layout_width="0dp" android:layout_height="40dp"
-                      android:layout_weight="1" android:text="@string/menu"
-                      android:background="@drawable/bg_btn"
-                      android:textColor="@color/ui_text" android:textSize="12sp"/>
-              </LinearLayout>
-          </LinearLayout>
-          LGEOF
-
-          cat > app/src/main/res/layout/activity_online.xml << 'LOEOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-              android:layout_width="match_parent" android:layout_height="match_parent"
-              android:orientation="vertical" android:background="@color/ui_bg" android:padding="20dp">
-              <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                  android:text="Online Oyun" android:textSize="22sp" android:textStyle="bold"
-                  android:textColor="@color/ui_gold" android:layout_marginBottom="4dp"/>
-              <TextView android:id="@+id/tvStatus"
-                  android:layout_width="wrap_content" android:layout_height="wrap_content"
-                  android:text="Bagli degil" android:textSize="12sp"
-                  android:textColor="@color/ui_text_dim" android:layout_marginBottom="16dp"/>
-              <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                  android:orientation="vertical" android:background="@drawable/bg_panel"
-                  android:padding="14dp" android:layout_marginBottom="12dp">
-                  <EditText android:id="@+id/etIP"
-                      android:layout_width="match_parent" android:layout_height="46dp"
-                      android:hint="@string/server_hint" android:background="@drawable/bg_input"
-                      android:textColor="@color/ui_text" android:textColorHint="@color/ui_text_dim"
-                      android:paddingStart="12dp" android:paddingEnd="12dp"
-                      android:inputType="text" android:layout_marginBottom="8dp"/>
-                  <EditText android:id="@+id/etName"
-                      android:layout_width="match_parent" android:layout_height="46dp"
-                      android:hint="@string/name_hint" android:background="@drawable/bg_input"
-                      android:textColor="@color/ui_text" android:textColorHint="@color/ui_text_dim"
-                      android:paddingStart="12dp" android:paddingEnd="12dp"
-                      android:inputType="text" android:layout_marginBottom="8dp"/>
-                  <Button android:id="@+id/btnConnect"
-                      android:layout_width="match_parent" android:layout_height="48dp"
-                      android:text="@string/connect" android:background="@drawable/bg_btn_gold"
-                      android:textColor="@color/ui_bg" android:textStyle="bold"/>
-              </LinearLayout>
-              <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-                  android:orientation="horizontal" android:layout_marginBottom="10dp">
-                  <Button android:id="@+id/btnCreate"
-                      android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1"
-                      android:text="@string/create_room" android:background="@drawable/bg_btn"
-                      android:textColor="@color/ui_text" android:layout_marginEnd="6dp"/>
-                  <Button android:id="@+id/btnJoin"
-                      android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1"
-                      android:text="@string/join_room" android:background="@drawable/bg_btn"
-                      android:textColor="@color/ui_text"/>
-              </LinearLayout>
-              <EditText android:id="@+id/etCode"
-                  android:layout_width="match_parent" android:layout_height="52dp"
-                  android:hint="@string/room_code_hint" android:background="@drawable/bg_input"
-                  android:textColor="@color/ui_text" android:textColorHint="@color/ui_text_dim"
-                  android:paddingStart="14dp" android:paddingEnd="14dp"
-                  android:gravity="center" android:letterSpacing="0.2"
-                  android:textSize="18sp" android:inputType="textCapCharacters"
-                  android:layout_marginBottom="12dp"/>
-              <LinearLayout android:layout_width="match_parent" android:layout_height="0dp"
-                  android:layout_weight="1" android:orientation="vertical"
-                  android:background="@drawable/bg_panel" android:padding="10dp">
-                  <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                      android:text="Sohbet" android:textColor="@color/ui_gold"
-                      android:textSize="11sp" android:layout_marginBottom="6dp"/>
-                  <ScrollView android:id="@+id/scrollChat"
-                      android:layout_width="match_parent" android:layout_height="0dp"
-                      android:layout_weight="1">
-                      <LinearLayout android:id="@+id/chatContainer"
-                          android:layout_width="match_parent" android:layout_height="wrap_content"
-                          android:orientation="vertical"/>
-                  </ScrollView>
-                  <LinearLayout android:layout_width="match_parent" android:layout_height="44dp"
-                      android:orientation="horizontal" android:layout_marginTop="6dp">
-                      <EditText android:id="@+id/etChat"
-                          android:layout_width="0dp" android:layout_height="match_parent"
-                          android:layout_weight="1" android:hint="@string/chat_hint"
-                          android:background="@drawable/bg_input"
-                          android:textColor="@color/ui_text" android:textColorHint="@color/ui_text_dim"
-                          android:paddingStart="10dp" android:paddingEnd="10dp"
-                          android:inputType="text" android:layout_marginEnd="6dp"/>
-                      <Button android:id="@+id/btnSend"
-                          android:layout_width="60dp" android:layout_height="match_parent"
-                          android:text="@string/send" android:background="@drawable/bg_btn_gold"
-                          android:textColor="@color/ui_bg" android:textSize="12sp"/>
-                  </LinearLayout>
-              </LinearLayout>
-          </LinearLayout>
-          LOEOF
-
-          echo "Kaynak dosyalar tamam"
-
-      # ═══════════════════════════════════════════════════════════
-      # ADIM 2 — JAVA KAYNAK KODLARI
-      # ═══════════════════════════════════════════════════════════
-      - name: Write Java sources
-        run: |
-
-          # GameEngine.java
-          cat > app/src/main/java/com/damax/game/GameEngine.java << 'JEEOF'
-          package com.damax.game;
-          import java.util.*;
-          public class GameEngine {
-              public static final int EMPTY=0,P1=1,P2=2,P1K=3,P2K=4;
-              public int[][] board=new int[8][8];
-              public int turn=1;
-              public boolean active=false;
-              public int p1count=12,p2count=12;
-              public int aiLevel=2;
-              public static class Move {
-                  public int[]from,to; public List<int[]>caps;
-                  public Move(int[]f,int[]t,List<int[]>c){from=f;to=t;caps=c!=null?c:new ArrayList<>();}
-              }
-              public void init(){
-                  board=new int[8][8];
-                  for(int r=0;r<3;r++)for(int c=0;c<8;c++)if((r+c)%2==1)board[r][c]=P2;
-                  for(int r=5;r<8;r++)for(int c=0;c<8;c++)if((r+c)%2==1)board[r][c]=P1;
-                  turn=1;active=true;p1count=12;p2count=12;
-              }
-              public List<Move> captures(int[][]b,int r,int c,int pl){
-                  int pc=b[r][c];boolean king=pc==P1K||pc==P2K;
-                  int[][]dirs=dirs(pl,king);List<Move>res=new ArrayList<>();
-                  for(int[]d:dirs){
-                      int er=r+d[0],ec=c+d[1],lr=r+2*d[0],lc=c+2*d[1];
-                      if(er<0||er>7||ec<0||ec>7||lr<0||lr>7||lc<0||lc>7)continue;
-                      int e=b[er][ec];
-                      boolean enemy=(pl==1&&(e==P2||e==P2K))||(pl==2&&(e==P1||e==P1K));
-                      if(enemy&&b[lr][lc]==EMPTY){
-                          List<int[]>cap=new ArrayList<>();cap.add(new int[]{er,ec});
-                          res.add(new Move(new int[]{r,c},new int[]{lr,lc},cap));
-                      }
-                  }
-                  return res;
-              }
-              public List<Move> moves(int[][]b,int r,int c,int pl){
-                  List<Move>caps=captures(b,r,c,pl);if(!caps.isEmpty())return caps;
-                  int pc=b[r][c];boolean king=pc==P1K||pc==P2K;
-                  int[][]dirs=dirs(pl,king);List<Move>res=new ArrayList<>();
-                  for(int[]d:dirs){int nr=r+d[0],nc=c+d[1];
-                      if(nr>=0&&nr<8&&nc>=0&&nc<8&&b[nr][nc]==EMPTY)
-                          res.add(new Move(new int[]{r,c},new int[]{nr,nc},null));
-                  }
-                  return res;
-              }
-              public List<Move> allMoves(int[][]b,int pl){
-                  List<Move>all=new ArrayList<>();
-                  for(int r=0;r<8;r++)for(int c=0;c<8;c++){
-                      int p=b[r][c];
-                      if((pl==1&&(p==P1||p==P1K))||(pl==2&&(p==P2||p==P2K)))
-                          all.addAll(moves(b,r,c,pl));
-                  }
-                  boolean hc=false;for(Move m:all)if(!m.caps.isEmpty()){hc=true;break;}
-                  if(hc){List<Move>f=new ArrayList<>();for(Move m:all)if(!m.caps.isEmpty())f.add(m);return f;}
-                  return all;
-              }
-              public int[][]applyMove(int[][]b,Move m,int pl){
-                  int[][]nb=copy(b);int[]f=m.from,t=m.to;
-                  nb[t[0]][t[1]]=nb[f[0]][f[1]];nb[f[0]][f[1]]=EMPTY;
-                  for(int[]cap:m.caps)nb[cap[0]][cap[1]]=EMPTY;
-                  if(nb[t[0]][t[1]]==P1&&t[0]==0)nb[t[0]][t[1]]=P1K;
-                  if(nb[t[0]][t[1]]==P2&&t[0]==7)nb[t[0]][t[1]]=P2K;
-                  return nb;
-              }
-              public boolean doMove(Move m){
-                  int[]t=m.to;
-                  board[t[0]][t[1]]=board[m.from[0]][m.from[1]];
-                  board[m.from[0]][m.from[1]]=EMPTY;
-                  for(int[]cap:m.caps){board[cap[0]][cap[1]]=EMPTY;if(turn==1)p2count--;else p1count--;}
-                  boolean king=false;
-                  if(board[t[0]][t[1]]==P1&&t[0]==0){board[t[0]][t[1]]=P1K;king=true;}
-                  if(board[t[0]][t[1]]==P2&&t[0]==7){board[t[0]][t[1]]=P2K;king=true;}
-                  return king;
-              }
-              public int winner(){
-                  if(p1count<=0)return 2;if(p2count<=0)return 1;
-                  int next=turn==1?2:1;
-                  if(allMoves(board,next).isEmpty())return turn;
-                  return 0;
-              }
-              public Move aiMove(){
-                  List<Move>mv=allMoves(board,2);if(mv.isEmpty())return null;
-                  if(aiLevel==1)return mv.get(new Random().nextInt(mv.size()));
-                  if(aiLevel==2){
-                      List<Move>caps=new ArrayList<>();for(Move m:mv)if(!m.caps.isEmpty())caps.add(m);
-                      List<Move>pool=caps.isEmpty()?mv:caps;
-                      return pool.get(new Random().nextInt(pool.size()));
-                  }
-                  Move best=null;int bs=Integer.MIN_VALUE;
-                  for(Move m:mv){int s=mm(applyMove(board,m,2),2,false,0);if(s>bs){bs=s;best=m;}}
-                  return best;
-              }
-              private int mm(int[][]b,int pl,boolean max,int d){
-                  if(d>=4)return eval(b);
-                  List<Move>mv=allMoves(b,pl);if(mv.isEmpty())return max?-999:999;
-                  if(max){int best=Integer.MIN_VALUE;for(Move m:mv)best=Math.max(best,mm(applyMove(b,m,pl),3-pl,false,d+1));return best;}
-                  else{int best=Integer.MAX_VALUE;for(Move m:mv)best=Math.min(best,mm(applyMove(b,m,pl),3-pl,true,d+1));return best;}
-              }
-              private int eval(int[][]b){
-                  int s=0;
-                  for(int r=0;r<8;r++)for(int c=0;c<8;c++){
-                      if(b[r][c]==P1)s-=10;else if(b[r][c]==P1K)s-=18;
-                      else if(b[r][c]==P2)s+=10+(7-r);else if(b[r][c]==P2K)s+=18;
-                  }
-                  return s;
-              }
-              private int[][]dirs(int pl,boolean king){
-                  if(king)return new int[][]{{-1,-1},{-1,1},{1,-1},{1,1}};
-                  if(pl==1)return new int[][]{{-1,-1},{-1,1}};
-                  return new int[][]{{1,-1},{1,1}};
-              }
-              private int[][]copy(int[][]b){
-                  int[][]n=new int[8][8];for(int i=0;i<8;i++)System.arraycopy(b[i],0,n[i],0,8);return n;
-              }
-          }
-          JEEOF
-
-          # BoardView.java — gercekci ahsap tahta + 3D konsantrik tas
-          cat > app/src/main/java/com/damax/game/BoardView.java << 'BVEOF'
-          package com.damax.game;
-          import android.content.Context;
-          import android.graphics.*;
-          import android.util.AttributeSet;
-          import android.view.*;
-          import java.util.*;
-
-          public class BoardView extends View {
-              // Hucre renkleri (ahsap)
-              private static final int[] DARK_GRAD  = {0xFFD49A4A,0xFFB87830,0xFFC88840,0xFFD49A4A};
-              private static final int[] LIGHT_GRAD = {0xFFFFF8E0,0xFFEED8A0,0xFFF8ECC0,0xFFFFF8E0};
-              // Koyu tas (kahverengi — resimde ust satirlar)
-              private static final int D_OUT=0xFF3A0F04,D_R1=0xFF6B2008,D_R2=0xFF8B3218;
-              private static final int D_R3=0xFF9E3C20,D_R4=0xFFB04828,D_CTR=0xFFC05030,D_SH=0xFFD06838;
-              // Acik tas (krem/altin — resimde alt satirlar)
-              private static final int L_OUT=0xFFA07010,L_R1=0xFFBE9020,L_R2=0xFFD0A830;
-              private static final int L_R3=0xFFDDB840,L_R4=0xFFEACA50,L_CTR=0xFFF2D860,L_SH=0xFFFDE880;
-
-              private Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
-              private GameEngine eng;
-              private int[]sel; private List<GameEngine.Move>valid=new ArrayList<>();
-              private int[]lastFrom,lastTo;
-              private float cs,ox,oy; // cellSize, offsetX, offsetY
-              private Listener lst;
-              public interface Listener{void onTap(int r,int c);}
-
-              public BoardView(Context c){super(c);init();}
-              public BoardView(Context c,AttributeSet a){super(c,a);init();}
-              public BoardView(Context c,AttributeSet a,int d){super(c,a,d);init();}
-
-              private void init(){
-                  setOnTouchListener((v,e)->{
-                      if(e.getAction()==MotionEvent.ACTION_UP){
-                          int c2=(int)((e.getX()-ox)/cs),r2=(int)((e.getY()-oy)/cs);
-                          if(r2>=0&&r2<8&&c2>=0&&c2<8&&lst!=null)lst.onTap(r2,c2);
-                          performClick();
-                      }
-                      return true;
-                  });
-              }
-              @Override public boolean performClick(){return super.performClick();}
-
-              @Override protected void onDraw(Canvas cv){
-                  if(eng==null)return;
-                  int sz=Math.min(getWidth(),getHeight());
-                  float brd=sz*0.045f;
-                  cs=(sz-brd*2)/8f;
-                  ox=(getWidth()-sz)/2f+brd;
-                  oy=(getHeight()-sz)/2f+brd;
-
-                  // Dis cerceve (ahsap)
-                  float wx=(getWidth()-sz)/2f,wy=(getHeight()-sz)/2f;
-                  p.setShader(new LinearGradient(wx,wy,wx+sz,wy+sz,
-                      new int[]{0xFFA05520,0xFF7B3510,0xFF9B4518,0xFF6B2808},
-                      null,Shader.TileMode.CLAMP));
-                  p.setStyle(Paint.Style.FILL);
-                  cv.drawRoundRect(new RectF(wx,wy,wx+sz,wy+sz),14,14,p);
-                  p.setShader(null);
-                  // Ic cizgi
-                  p.setStyle(Paint.Style.STROKE);p.setColor(0xFF3D1200);p.setStrokeWidth(2f);
-                  cv.drawRect(ox-1,oy-1,ox+cs*8+1,oy+cs*8+1,p);
-                  p.setStyle(Paint.Style.FILL);
-
-                  // Hucreler
-                  for(int r=0;r<8;r++){
-                      for(int c=0;c<8;c++){
-                          float l=ox+c*cs,t=oy+r*cs;
-                          RectF cell=new RectF(l,t,l+cs,t+cs);
-                          boolean dark=(r+c)%2==1;
-                          drawCell(cv,cell,dark);
-                          // Son hamle
-                          if(isLast(r,c)){p.setColor(0x40FFD700);cv.drawRect(cell,p);}
-                          // Secili
-                          if(isSel(r,c)){
-                              p.setColor(0x55FFD700);cv.drawRect(cell,p);
-                              p.setStyle(Paint.Style.STROKE);p.setColor(0xCCFFD700);p.setStrokeWidth(3f);
-                              cv.drawRect(cell,p);p.setStyle(Paint.Style.FILL);
-                          }
-                          // Gecerli hamle noktasi
-                          GameEngine.Move vm=validAt(r,c);
-                          if(vm!=null)drawDot(cv,l+cs/2,t+cs/2,vm.caps.isEmpty());
-                      }
-                  }
-
-                  // Koordinatlar (kucuk, tah disi)
-                  p.setTextSize(brd*0.52f);p.setColor(0xAAFFE4B5);
-                  for(int i=0;i<8;i++){
-                      cv.drawText(String.valueOf((char)('a'+i)),ox+i*cs+cs*0.08f,oy+cs*8+brd*0.8f,p);
-                      cv.drawText(String.valueOf(8-i),wx+brd*0.15f,oy+i*cs+cs*0.6f,p);
-                  }
-
-                  // Taslar
-                  for(int r=0;r<8;r++){
-                      for(int c=0;c<8;c++){
-                          int pc=eng.board[r][c];if(pc==GameEngine.EMPTY)continue;
-                          boolean isP1=pc==GameEngine.P1||pc==GameEngine.P1K;
-                          boolean king=pc==GameEngine.P1K||pc==GameEngine.P2K;
-                          float cx=ox+c*cs+cs/2,cy=oy+r*cs+cs/2,pr=cs*0.43f;
-                          if(isSel(r,c))pr*=1.06f;
-                          drawPiece(cv,cx,cy,pr,isP1,king,isSel(r,c));
-                      }
-                  }
-              }
-
-              private void drawCell(Canvas cv,RectF r,boolean dark){
-                  int[]g=dark?DARK_GRAD:LIGHT_GRAD;
-                  p.setShader(new LinearGradient(r.left,r.top,r.right,r.bottom,g,null,Shader.TileMode.CLAMP));
-                  cv.drawRect(r,p);p.setShader(null);
-                  // Ahsap doku cizgileri
-                  p.setColor(dark?0x10000000:0x08000000);
-                  p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(0.7f);
-                  float h=r.height()/5f;
-                  for(int i=1;i<5;i++)cv.drawLine(r.left,r.top+i*h,r.right,r.top+i*h+0.8f,p);
-                  p.setStyle(Paint.Style.FILL);
-              }
-
-              /** Gercekci 3D konsantrik halka tasi ciz — resimde goruldugu gibi */
-              private void drawPiece(Canvas cv,float cx,float cy,float r,boolean p1,boolean king,boolean sel){
-                  int out=p1?D_OUT:L_OUT,r1=p1?D_R1:L_R1,r2=p1?D_R2:L_R2;
-                  int r3=p1?D_R3:L_R3,r4=p1?D_R4:L_R4,ctr=p1?D_CTR:L_CTR,sh=p1?D_SH:L_SH;
-
-                  // Golgesi (hafif asagida)
-                  p.setShader(new RadialGradient(cx,cy+r*0.15f,r*1.1f,
-                      new int[]{0x50000000,0x00000000},null,Shader.TileMode.CLAMP));
-                  cv.drawCircle(cx+r*0.04f,cy+r*0.12f,r,p);p.setShader(null);
-
-                  // Secim parlama halkasi
-                  if(sel){
-                      p.setColor(0xDDFFD700);p.setStyle(Paint.Style.STROKE);
-                      p.setStrokeWidth(r*0.1f);
-                      cv.drawCircle(cx,cy,r+r*0.08f,p);
-                      p.setStyle(Paint.Style.FILL);
-                  }
-
-                  // --- Radyal gradyan tabani ---
-                  // Dis kenar (en koyu)
-                  p.setShader(new RadialGradient(cx,cy,r,new int[]{r2,out},null,Shader.TileMode.CLAMP));
-                  cv.drawCircle(cx,cy,r,p);p.setShader(null);
-
-                  // Konsantrik halkalar — yuze basmali cizgi efekti
-                  float rr=r*0.95f;
-                  drawRing(cv,cx,cy,rr,rr*0.07f,out);       // dis halka
-                  drawRing(cv,cx,cy,rr*0.84f,rr*0.06f,r1);  // 2. halka
-                  drawRing(cv,cx,cy,rr*0.68f,rr*0.06f,r2);  // 3. halka
-                  drawRing(cv,cx,cy,rr*0.50f,rr*0.05f,r3);  // 4. halka
-                  drawRing(cv,cx,cy,rr*0.32f,rr*0.05f,r4);  // 5. halka
-
-                  // Orta dolu alan — 3D ust yuzey gradyani
-                  float tx=cx-r*0.22f,ty=cy-r*0.22f;
-                  p.setShader(new RadialGradient(tx,ty,r*1.1f,
-                      new int[]{sh,ctr,r4,r3},new float[]{0f,0.2f,0.6f,1f},Shader.TileMode.CLAMP));
-                  cv.drawCircle(cx,cy,rr*0.26f,p);p.setShader(null);
-
-                  // Merkez parlak nokta
-                  p.setShader(new RadialGradient(tx,ty,r*0.25f,
-                      new int[]{0xBBFFFFFF,0x00FFFFFF},null,Shader.TileMode.CLAMP));
-                  cv.drawCircle(tx+r*0.05f,ty+r*0.05f,r*0.22f,p);p.setShader(null);
-
-                  // Dame (tas uzerinde altin cornel/halka)
-                  if(king){
-                      p.setColor(0xFFFFD700);p.setStyle(Paint.Style.STROKE);
-                      p.setStrokeWidth(r*0.09f);
-                      cv.drawCircle(cx,cy,rr*0.42f,p);
-                      cv.drawCircle(cx,cy,rr*0.22f,p);
-                      p.setStyle(Paint.Style.FILL);
-                      p.setColor(0xCCFFD700);cv.drawCircle(cx,cy,rr*0.12f,p);
-                  }
-              }
-
-              private void drawRing(Canvas cv,float cx,float cy,float r,float w,int color){
-                  p.setColor(color);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(w);
-                  // Hafif golge efekti icin ince ic cizgi
-                  cv.drawCircle(cx,cy,r,p);
-                  // Alt-sag daha koyu (3D derinlik)
-                  p.setColor(color&0x80FFFFFF);p.setStrokeWidth(w*0.6f);
-                  cv.drawArc(new RectF(cx-r,cy-r,cx+r,cy+r),30,180,false,p);
-                  p.setStyle(Paint.Style.FILL);
-              }
-
-              private void drawDot(Canvas cv,float cx,float cy,boolean normal){
-                  float dr=cs*0.18f;
-                  p.setShader(new RadialGradient(cx,cy,dr,
-                      new int[]{normal?0xCCFFD700:0xCCFF4400,normal?0x44FFD700:0x44FF4400},
-                      null,Shader.TileMode.CLAMP));
-                  cv.drawCircle(cx,cy,dr,p);p.setShader(null);
-              }
-
-              private boolean isSel(int r,int c){return sel!=null&&sel[0]==r&&sel[1]==c;}
-              private boolean isLast(int r,int c){
-                  return(lastFrom!=null&&lastFrom[0]==r&&lastFrom[1]==c)||
-                        (lastTo!=null&&lastTo[0]==r&&lastTo[1]==c);
-              }
-              private GameEngine.Move validAt(int r,int c){
-                  for(GameEngine.Move m:valid)if(m.to[0]==r&&m.to[1]==c)return m;return null;
-              }
-              public void setEngine(GameEngine e){eng=e;invalidate();}
-              public void select(int[]s,List<GameEngine.Move>v){sel=s;valid=v!=null?v:new ArrayList<>();invalidate();}
-              public void clearSel(){sel=null;valid.clear();invalidate();}
-              public void setLast(int[]f,int[]t){lastFrom=f;lastTo=t;invalidate();}
-              public void setListener(Listener l){lst=l;}
-              public void refresh(){invalidate();}
-          }
-          BVEOF
-
-          # SoundManager.java
-          cat > app/src/main/java/com/damax/game/SoundManager.java << 'SMEOF'
-          package com.damax.game;
-          import android.content.Context;
-          import android.os.*;
-          public class SoundManager {
-              private Vibrator v; private boolean on=true;
-              public SoundManager(Context c){v=(Vibrator)c.getSystemService(Context.VIBRATOR_SERVICE);}
-              public void move(){vib(20);}
-              public void capture(){vib(50);}
-              public void king(){vib(new long[]{0,25,35,65});}
-              public void win(){vib(new long[]{0,70,50,110,50,180});}
-              public void error(){vib(new long[]{0,35,25,35});}
-              public void tick(){vib(10);}
-              private void vib(long ms){if(!on||v==null||!v.hasVibrator())return;
-                  v.vibrate(VibrationEffect.createOneShot(ms,VibrationEffect.DEFAULT_AMPLITUDE));}
-              private void vib(long[]p){if(!on||v==null||!v.hasVibrator())return;
-                  v.vibrate(VibrationEffect.createWaveform(p,-1));}
-              public void setEnabled(boolean e){on=e;}
-          }
-          SMEOF
-
-          # Prefs.java
-          cat > app/src/main/java/com/damax/game/Prefs.java << 'PREOF'
-          package com.damax.game;
-          import android.content.*;
-          public class Prefs {
-              private SharedPreferences sp;
-              public Prefs(Context c){sp=c.getSharedPreferences("dama",Context.MODE_PRIVATE);}
-              public String name(){return sp.getString("name","Oyuncu");}
-              public void name(String v){sp.edit().putString("name",v).apply();}
-              public String ip(){return sp.getString("ip","192.168.1.5");}
-              public void ip(String v){sp.edit().putString("ip",v).apply();}
-              public int level(){return sp.getInt("level",2);}
-              public void level(int v){sp.edit().putInt("level",v).apply();}
-              public int timer(){return sp.getInt("timer",0);}
-              public void timer(int v){sp.edit().putInt("timer",v).apply();}
-          }
-          PREOF
-
-          # WsClient.java
-          cat > app/src/main/java/com/damax/game/WsClient.java << 'WSEOF'
-          package com.damax.game;
-          import android.os.*;
-          import com.google.gson.*;import okhttp3.*;
-          import java.util.concurrent.TimeUnit;
-          public class WsClient {
-              public interface CB{void ok();void fail();void msg(String t,JsonObject d);}
-              private OkHttpClient client;private WebSocket ws;private boolean conn=false;
-              private Handler h=new Handler(Looper.getMainLooper());private CB cb;
-              public WsClient(CB c){cb=c;client=new OkHttpClient.Builder()
-                  .connectTimeout(10,TimeUnit.SECONDS).pingInterval(20,TimeUnit.SECONDS).build();}
-              public void connect(String ip,int port){
-                  Request req=new Request.Builder().url("ws://"+ip+":"+port+"/ws").build();
-                  ws=client.newWebSocket(req,new WebSocketListener(){
-                      public void onOpen(WebSocket w,Response r){conn=true;h.post(cb::ok);}
-                      public void onMessage(WebSocket w,String t){try{
-                          JsonObject o=JsonParser.parseString(t).getAsJsonObject();
-                          String tp=o.get("type").getAsString();
-                          h.post(()->cb.msg(tp,o));}catch(Exception ignored){}}
-                      public void onClosed(WebSocket w,int c,String r){conn=false;h.post(cb::fail);}
-                      public void onFailure(WebSocket w,Throwable t,Response r){conn=false;h.post(cb::fail);}
-                  });
-              }
-              public void send(JsonObject o){if(ws!=null&&conn)ws.send(new Gson().toJson(o));}
-              public void close(){if(ws!=null){ws.close(1000,"bye");ws=null;}conn=false;}
-              public boolean connected(){return conn;}
-          }
-          WSEOF
-
-          # MainActivity.java
-          cat > app/src/main/java/com/damax/game/MainActivity.java << 'MNEOF'
-          package com.damax.game;
-          import android.content.Intent;import android.os.Bundle;
-          import android.widget.Button;
-          import androidx.appcompat.app.AppCompatActivity;
-          import com.damax.game.databinding.ActivityMainBinding;
-          public class MainActivity extends AppCompatActivity {
-              private ActivityMainBinding b;private Prefs prefs;
-              @Override protected void onCreate(Bundle s){
-                  super.onCreate(s);b=ActivityMainBinding.inflate(getLayoutInflater());
-                  setContentView(b.getRoot());prefs=new Prefs(this);
-                  b.btnVsAI.setOnClickListener(v->go("ai"));
-                  b.btnLocal.setOnClickListener(v->go("local"));
-                  b.btnOnline.setOnClickListener(v->startActivity(new Intent(this,OnlineActivity.class)));
-                  int lv=prefs.level();
-                  highlight(lv==1?b.btnEasy:lv==3?b.btnHard:b.btnMed);
-                  b.btnEasy.setOnClickListener(v->{prefs.level(1);highlight(b.btnEasy);});
-                  b.btnMed.setOnClickListener(v->{prefs.level(2);highlight(b.btnMed);});
-                  b.btnHard.setOnClickListener(v->{prefs.level(3);highlight(b.btnHard);});
-              }
-              private void go(String mode){
-                  Intent i=new Intent(this,GameActivity.class);i.putExtra("mode",mode);startActivity(i);}
-              private void highlight(Button active){
-                  for(Button btn:new Button[]{b.btnEasy,b.btnMed,b.btnHard}){
-                      btn.setBackgroundResource(R.drawable.bg_btn);
-                      btn.setTextColor(getColor(R.color.ui_text));
-                  }
-                  active.setBackgroundResource(R.drawable.bg_btn_gold);
-                  active.setTextColor(getColor(R.color.ui_bg));
-              }
-          }
-          MNEOF
-
-          # GameActivity.java
-          cat > app/src/main/java/com/damax/game/GameActivity.java << 'GAEOF'
-          package com.damax.game;
-          import android.app.AlertDialog;import android.os.*;
-          import android.widget.Toast;import androidx.appcompat.app.AppCompatActivity;
-          import com.damax.game.databinding.ActivityGameBinding;
-          import com.google.gson.JsonObject;
-          import java.util.*;import java.util.Stack;
-          public class GameActivity extends AppCompatActivity implements BoardView.Listener,WsClient.CB {
-              private ActivityGameBinding b;
-              private GameEngine eng;private SoundManager snd;private Prefs prefs;
-              private String mode;private int myColor=1;private boolean myTurn=true;
-              private String room="";
-              private int[]sel=null;private List<GameEngine.Move>valid=new ArrayList<>();
-              private int[]captureChain=null;
-              private Stack<int[][]>undoB=new Stack<>();private Stack<int[]>undoC=new Stack<>();
-              private CountDownTimer tmr;private int tmrSec=0;private WsClient ws;
-
-              @Override protected void onCreate(Bundle s){
-                  super.onCreate(s);b=ActivityGameBinding.inflate(getLayoutInflater());
-                  setContentView(b.getRoot());prefs=new Prefs(this);snd=new SoundManager(this);
-                  eng=new GameEngine();eng.aiLevel=prefs.level();
-                  mode=getIntent().getStringExtra("mode");if(mode==null)mode="ai";
-                  b.boardView.setEngine(eng);b.boardView.setListener(this);
-                  b.btnUndo.setOnClickListener(v->undo());
-                  b.btnNewGame.setOnClickListener(v->newGame());
-                  b.btnMenu.setOnClickListener(v->finish());
-                  if("online".equals(mode)){ws=new WsClient(this);
-                      ws.connect(getIntent().getStringExtra("ip")!=null?
-                          getIntent().getStringExtra("ip"):prefs.ip(),3000);}
-                  names();newGame();
-              }
-
-              private void newGame(){
-                  eng.init();sel=null;valid.clear();captureChain=null;
-                  undoB.clear();undoC.clear();
-                  b.boardView.setLast(null,null);b.boardView.clearSel();
-                  myTurn=!"online".equals(mode)||myColor==1;
-                  stopTmr();tmrSec=prefs.timer();
-                  if(tmrSec>0)startTmr(tmrSec);else b.tvTimer.setText("inf");
-                  ui();b.boardView.refresh();
-                  if("ai".equals(mode)&&eng.turn==2)ai();
-              }
-
-              @Override public void onTap(int r,int c){
-                  if(!eng.active)return;
-                  if("online".equals(mode)&&!myTurn){toast("Sira sende degil");return;}
-                  int pl=eng.turn,pc=eng.board[r][c];
-                  boolean mine=(pl==1&&(pc==GameEngine.P1||pc==GameEngine.P1K))||
-                               (pl==2&&(pc==GameEngine.P2||pc==GameEngine.P2K));
-                  if(captureChain!=null){
-                      GameEngine.Move vm=vAt(r,c);if(vm!=null){doMove(vm);return;}return;}
-                  if(sel!=null){
-                      GameEngine.Move vm=vAt(r,c);if(vm!=null){doMove(vm);return;}
-                      if(mine){pick(r,c);return;}clearSel();return;
-                  }
-                  if(mine){
-                      List<GameEngine.Move>all=eng.allMoves(eng.board,pl);
-                      boolean forced=false;for(GameEngine.Move m:all)if(!m.caps.isEmpty()){forced=true;break;}
-                      List<GameEngine.Move>my=eng.moves(eng.board,r,c,pl);
-                      boolean myCap=false;for(GameEngine.Move m:my)if(!m.caps.isEmpty()){myCap=true;break;}
-                      if(forced&&!myCap){snd.error();toast("Zorunlu yeme var!");return;}
-                      pick(r,c);
-                  }
-              }
-
-              private void pick(int r,int c){
-                  sel=new int[]{r,c};valid=eng.moves(eng.board,r,c,eng.turn);
-                  b.boardView.select(sel,valid);}
-              private void clearSel(){sel=null;valid.clear();captureChain=null;b.boardView.clearSel();}
-              private GameEngine.Move vAt(int r,int c){
-                  for(GameEngine.Move m:valid)if(m.to[0]==r&&m.to[1]==c)return m;return null;}
-
-              private void doMove(GameEngine.Move mv){
-                  int[][]cp=new int[8][8];for(int i=0;i<8;i++)System.arraycopy(eng.board[i],0,cp[i],0,8);
-                  undoB.push(cp);undoC.push(new int[]{eng.p1count,eng.p2count,eng.turn});
-                  boolean king=eng.doMove(mv);
-                  b.boardView.setLast(mv.from,mv.to);
-                  if(!mv.caps.isEmpty())snd.capture();else snd.move();
-                  if(king){snd.king();toast("Dame!");}
-                  if("online".equals(mode)&&ws!=null){
-                      JsonObject o=new JsonObject();o.addProperty("type","move");o.addProperty("room",room);
-                      JsonObject m=new JsonObject();m.addProperty("fr",mv.from[0]);m.addProperty("fc",mv.from[1]);
-                      m.addProperty("tr",mv.to[0]);m.addProperty("tc",mv.to[1]);o.add("move",m);ws.send(o);}
-                  if(!mv.caps.isEmpty()){
-                      int[]t=mv.to;List<GameEngine.Move>chain=eng.captures(eng.board,t[0],t[1],eng.turn);
-                      if(!chain.isEmpty()){captureChain=t;sel=t;valid=chain;
-                          b.boardView.select(sel,valid);ui();b.boardView.refresh();return;}}
-                  captureChain=null;ui();
-                  int w=eng.winner();if(w!=0){over(w);return;}
-                  eng.turn=eng.turn==1?2:1;myTurn="local".equals(mode)||myColor==eng.turn;
-                  clearSel();ui();resetTmr();b.boardView.refresh();
-                  if("ai".equals(mode)&&eng.turn==2)new Handler().postDelayed(this::ai,650);
-              }
-
-              private void ai(){
-                  if(!eng.active||eng.turn!=2)return;
-                  GameEngine.Move m=eng.aiMove();if(m!=null)doMove(m);else over(1);}
-
-              private void undo(){
-                  if(undoB.isEmpty()){toast("Geri alinacak hamle yok");return;}
-                  if("online".equals(mode)){toast("Online modda geri alma yok");return;}
-                  eng.board=undoB.pop();int[]c=undoC.pop();
-                  eng.p1count=c[0];eng.p2count=c[1];eng.turn=c[2];eng.active=true;captureChain=null;
-                  b.boardView.setLast(null,null);clearSel();ui();b.boardView.refresh();}
-
-              private void over(int w){
-                  eng.active=false;stopTmr();snd.win();
-                  new AlertDialog.Builder(this)
-                      .setTitle("Oyun Bitti")
-                      .setMessage(w==1?"Koyu taraf kazandi!":"Acik taraf kazandi!")
-                      .setPositiveButton("Tekrar",(_,__)-> newGame())
-                      .setNegativeButton("Menu",(_,__)->finish())
-                      .setCancelable(false).show();}
-
-              private void names(){
-                  if("ai".equals(mode)){b.tvP1Name.setText("Sen");b.tvP2Name.setText("Bilgisayar");}
-                  else{b.tvP1Name.setText("Oyuncu 1");b.tvP2Name.setText("Oyuncu 2");}}
-
-              private void ui(){
-                  b.tvP1Count.setText(eng.p1count+" tas");b.tvP2Count.setText(eng.p2count+" tas");
-                  String t="local".equals(mode)||myTurn?"Senin Siran":
-                      "ai".equals(mode)&&eng.turn==2?"Bilgisayar...":"Rakip...";
-                  b.tvTurn.setText(t);
-                  b.tvP1Name.setAlpha(eng.turn==1?1f:0.5f);b.tvP2Name.setAlpha(eng.turn==2?1f:0.5f);}
-
-              private void startTmr(int sec){
-                  tmr=new CountDownTimer(sec*1000L,1000){
-                      public void onTick(long ms){int s=(int)(ms/1000);
-                          b.tvTimer.setText(s>60?(s/60)+":"+(s%60<10?"0":"")+s%60:String.valueOf(s));
-                          if(s<=5)snd.tick();}
-                      public void onFinish(){over(eng.turn==1?2:1);}}.start();}
-              private void resetTmr(){stopTmr();if(tmrSec>0)startTmr(tmrSec);}
-              private void stopTmr(){if(tmr!=null){tmr.cancel();tmr=null;}}
-
-              @Override public void ok(){toast("Baglandi");}
-              @Override public void fail(){toast("Baglanamadi");}
-              @Override public void msg(String t,JsonObject d){
-                  switch(t){
-                      case "gameStart":myColor=d.get("yourColor").getAsInt();myTurn=myColor==1;
-                          room=d.has("room")?d.get("room").getAsString():"";
-                          b.tvP1Name.setText(d.get("p1name").getAsString());
-                          b.tvP2Name.setText(d.get("p2name").getAsString());newGame();break;
-                      case "move":JsonObject mv=d.getAsJsonObject("move");
-                          doMove(new GameEngine.Move(
-                              new int[]{mv.get("fr").getAsInt(),mv.get("fc").getAsInt()},
-                              new int[]{mv.get("tr").getAsInt(),mv.get("tc").getAsInt()},
-                              new ArrayList<>()));break;
-                      case "opponentLeft":toast("Rakip ayrildi!");break;}}
-
-              private void toast(String s){Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}
-              @Override protected void onDestroy(){super.onDestroy();stopTmr();if(ws!=null)ws.close();}
-          }
-          GAEOF
-
-          # OnlineActivity.java
-          cat > app/src/main/java/com/damax/game/OnlineActivity.java << 'OAEOF'
-          package com.damax.game;
-          import android.content.Intent;import android.os.Bundle;
-          import android.widget.*;import androidx.appcompat.app.AppCompatActivity;
-          import com.damax.game.databinding.ActivityOnlineBinding;
-          import com.google.gson.*;
-          public class OnlineActivity extends AppCompatActivity implements WsClient.CB {
-              private ActivityOnlineBinding b;private WsClient ws;private Prefs prefs;
-              @Override protected void onCreate(Bundle s){
-                  super.onCreate(s);b=ActivityOnlineBinding.inflate(getLayoutInflater());
-                  setContentView(b.getRoot());prefs=new Prefs(this);
-                  b.etIP.setText(prefs.ip());b.etName.setText(prefs.name());
-                  b.btnConnect.setOnClickListener(v->conn());
-                  b.btnCreate.setOnClickListener(v->create());
-                  b.btnJoin.setOnClickListener(v->join());
-                  b.btnSend.setOnClickListener(v->chat());
-              }
-              private void conn(){
-                  String ip=b.etIP.getText().toString().trim();
-                  String nm=b.etName.getText().toString().trim();
-                  if(ip.isEmpty()||nm.isEmpty()){t("IP ve ad girin");return;}
-                  prefs.ip(ip);prefs.name(nm);b.tvStatus.setText("Baglaniliyor...");
-                  if(ws!=null)ws.close();ws=new WsClient(this);ws.connect(ip,3000);}
-              private void create(){
-                  if(ws==null||!ws.connected()){t("Once baglanin");return;}
-                  JsonObject o=new JsonObject();o.addProperty("type","createRoom");
-                  o.addProperty("name",prefs.name());ws.send(o);}
-              private void join(){
-                  if(ws==null||!ws.connected()){t("Once baglanin");return;}
-                  String code=b.etCode.getText().toString().trim().toUpperCase();
-                  if(code.isEmpty()){t("Oda kodu girin");return;}
-                  JsonObject o=new JsonObject();o.addProperty("type","joinRoom");
-                  o.addProperty("code",code);o.addProperty("name",prefs.name());ws.send(o);}
-              private void chat(){
-                  String msg=b.etChat.getText().toString().trim();if(msg.isEmpty())return;
-                  addChat("Sen",msg);b.etChat.setText("");
-                  if(ws!=null&&ws.connected()){JsonObject o=new JsonObject();
-                      o.addProperty("type","chat");o.addProperty("msg",msg);
-                      o.addProperty("name",prefs.name());ws.send(o);}}
-              private void addChat(String who,String msg){
-                  TextView tv=new TextView(this);tv.setText(who+": "+msg);
-                  tv.setTextColor(0xFFFFE4B5);tv.setTextSize(12);tv.setPadding(4,2,4,2);
-                  b.chatContainer.addView(tv);
-                  b.scrollChat.post(()->b.scrollChat.fullScroll(android.view.View.FOCUS_DOWN));}
-              @Override public void ok(){b.tvStatus.setText("Baglandi");}
-              @Override public void fail(){b.tvStatus.setText("Baglanamadi");}
-              @Override public void msg(String tp,JsonObject d){
-                  switch(tp){
-                      case "roomCreated":String c=d.get("code").getAsString();
-                          b.tvStatus.setText("Oda: "+c+" — Rakip bekleniyor");
-                          addChat("Sistem","Oda: "+c);break;
-                      case "gameStart":Intent i=new Intent(this,GameActivity.class);
-                          i.putExtra("mode","online");i.putExtra("ip",prefs.ip());startActivity(i);break;
-                      case "chat":addChat(d.get("name").getAsString(),d.get("msg").getAsString());break;
-                      case "error":t(d.get("msg").getAsString());break;}}
-              private void t(String s){Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}
-              @Override protected void onDestroy(){super.onDestroy();if(ws!=null)ws.close();}
-          }
-          OAEOF
-
-          echo "=== Tum Java dosyalari tamam ==="
-
-      # ═══════════════════════════════════════════════════════════
-      # ADIM 3 — BUILD
-      # ═══════════════════════════════════════════════════════════
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+      # ─── Gradle kurulum ───────────────────────────────────────────
+      - uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.4'
 
+      # ═══════════════════════════════════════════════════════════════
+      # TUM DOSYALARI YARAT
+      # ═══════════════════════════════════════════════════════════════
+      - name: Create project structure
+        run: |
+          set -e
+          mkdir -p app/src/main/java/com/damax/game
+          mkdir -p app/src/main/res/layout
+          mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/drawable
+          mkdir -p app/src/main/res/mipmap-anydpi-v26
+          mkdir -p app/src/main/res/mipmap-hdpi
+          mkdir -p app/src/main/res/mipmap-xhdpi
+          mkdir -p app/src/main/res/mipmap-xxhdpi
+          mkdir -p app/src/main/res/mipmap-xxxhdpi
+          mkdir -p gradle/wrapper
+          echo "Dizinler tamam"
+
+      - name: Write Gradle files
+        run: |
+          set -e
+# settings.gradle — girintisiz heredoc
+          cat > settings.gradle << 'ENDOFFILE'
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = "DamaOyunu"
+include ':app'
+ENDOFFILE
+
+          cat > build.gradle << 'ENDOFFILE'
+plugins {
+    id 'com.android.application' version '8.2.2' apply false
+}
+ENDOFFILE
+
+          cat > gradle.properties << 'ENDOFFILE'
+org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+android.useAndroidX=true
+android.enableJetifier=true
+ENDOFFILE
+
+          cat > gradle/wrapper/gradle-wrapper.properties << 'ENDOFFILE'
+distributionBase=GRADLE_USER_HOME
+distributionPath=wrapper/dists
+distributionUrl=https\://services.gradle.org/distributions/gradle-8.4-bin.zip
+networkTimeout=10000
+zipStoreBase=GRADLE_USER_HOME
+zipStorePath=wrapper/dists
+ENDOFFILE
+
+          cat > app/build.gradle << 'ENDOFFILE'
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.damax.game'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.damax.game"
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName "1.0.0"
+    }
+
+    buildTypes {
+        debug {
+            debuggable true
+        }
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        viewBinding true
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.11.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'com.google.code.gson:gson:2.10.1'
+}
+ENDOFFILE
+
+          echo "-keep class com.damax.game.** { *; }" > app/proguard-rules.pro
+          echo "Gradle dosyalari tamam"
+
+      - name: Write AndroidManifest
+        run: |
+          cat > app/src/main/AndroidManifest.xml << 'ENDOFFILE'
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:hardwareAccelerated="true"
+        android:theme="@style/Theme.Dama">
+        <activity android:name=".MainActivity" android:exported="true"
+            android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+        <activity android:name=".GameActivity" android:exported="false"
+            android:screenOrientation="portrait"/>
+        <activity android:name=".OnlineActivity" android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize"/>
+    </application>
+</manifest>
+ENDOFFILE
+
+      - name: Write resource files
+        run: |
+          cat > app/src/main/res/values/strings.xml << 'ENDOFFILE'
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Dama</string>
+    <string name="vs_ai">Bilgisayara Karsi</string>
+    <string name="vs_local">2 Oyuncu</string>
+    <string name="online">Online Oyna</string>
+    <string name="undo">Geri Al</string>
+    <string name="new_game">Yeni Oyun</string>
+    <string name="menu">Menu</string>
+    <string name="connect">Baglan</string>
+    <string name="create_room">Oda Olustur</string>
+    <string name="join_room">Odaya Katil</string>
+    <string name="server_hint">Sunucu IP (ornek: 192.168.1.5)</string>
+    <string name="room_code_hint">Oda Kodu</string>
+    <string name="name_hint">Adiniz</string>
+    <string name="send">Gonder</string>
+    <string name="chat_hint">Mesaj...</string>
+</resources>
+ENDOFFILE
+
+          cat > app/src/main/res/values/colors.xml << 'ENDOFFILE'
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="wood_border">#6B2F0A</color>
+    <color name="piece_dark_top">#8B3A1A</color>
+    <color name="piece_light_top">#E8C870</color>
+    <color name="ui_bg">#3D1C08</color>
+    <color name="ui_text">#FFE4B5</color>
+    <color name="ui_text_dim">#C8A060</color>
+    <color name="ui_gold">#DAA520</color>
+    <color name="ui_bg_int">#3D1C08</color>
+    <color name="colorPrimary">#8B4513</color>
+    <color name="colorPrimaryDark">#3D1C08</color>
+    <color name="colorAccent">#DAA520</color>
+</resources>
+ENDOFFILE
+
+          cat > app/src/main/res/values/themes.xml << 'ENDOFFILE'
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Dama" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryVariant">@color/wood_border</item>
+        <item name="colorOnPrimary">@color/ui_text</item>
+        <item name="colorSecondary">@color/ui_gold</item>
+        <item name="android:colorBackground">@color/ui_bg</item>
+        <item name="android:statusBarColor">@color/wood_border</item>
+        <item name="android:navigationBarColor">@color/wood_border</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:textColor">@color/ui_text</item>
+    </style>
+</resources>
+ENDOFFILE
+
+          cat > app/src/main/res/drawable/bg_panel.xml << 'ENDOFFILE'
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient android:startColor="#6B2F0A" android:endColor="#4A1F06" android:angle="135"/>
+    <stroke android:width="1dp" android:color="#44DAA520"/>
+    <corners android:radius="10dp"/>
+</shape>
+ENDOFFILE
+
+          cat > app/src/main/res/drawable/bg_btn.xml << 'ENDOFFILE'
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient android:startColor="#8B4513" android:endColor="#6B2F0A" android:angle="180"/>
+    <stroke android:width="1dp" android:color="#DAA520"/>
+    <corners android:radius="8dp"/>
+</shape>
+ENDOFFILE
+
+          cat > app/src/main/res/drawable/bg_btn_gold.xml << 'ENDOFFILE'
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient android:startColor="#DAA520" android:endColor="#B8860B" android:angle="180"/>
+    <stroke android:width="1dp" android:color="#FFD700"/>
+    <corners android:radius="8dp"/>
+</shape>
+ENDOFFILE
+
+          cat > app/src/main/res/drawable/bg_input.xml << 'ENDOFFILE'
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#2A1005"/>
+    <stroke android:width="1dp" android:color="#8B4513"/>
+    <corners android:radius="6dp"/>
+</shape>
+ENDOFFILE
+
+          cat > app/src/main/res/drawable/ic_launcher_foreground.xml << 'ENDOFFILE'
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+  <path android:fillColor="#8B4513" android:pathData="M0,0h108v108H0z"/>
+  <path android:fillColor="#C68642" android:pathData="M10,10h88v88H10z"/>
+  <path android:fillColor="#F5DEB3"
+      android:pathData="M10,10h22v22H10zM54,10h22v22H54zM32,32h22v22H32zM76,32h22v22H76zM10,54h22v22H10zM54,54h22v22H54zM32,76h22v22H32zM76,76h22v22H76z"/>
+  <circle android:fillColor="#5C2008" cx="43" cy="32" r="14"/>
+  <circle android:fillColor="#8B3A1A" cx="43" cy="30" r="11"/>
+  <circle android:fillColor="#C0622A" cx="40" cy="27" r="5"/>
+  <circle android:fillColor="#B8860B" cx="65" cy="76" r="14"/>
+  <circle android:fillColor="#DAA520" cx="65" cy="74" r="11"/>
+  <circle android:fillColor="#FFD700" cx="62" cy="71" r="5"/>
+  <path android:fillColor="#6B2F0A"
+      android:pathData="M10,10h88v3H10zM10,95h88v3H10zM10,10v88h3V10zM95,10v88h3V10z"/>
+</vector>
+ENDOFFILE
+
+          cat > app/src/main/res/drawable/ic_launcher_background.xml << 'ENDOFFILE'
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#8B4513"/>
+</shape>
+ENDOFFILE
+
+          # Adaptive icon SADECE anydpi-v26 altinda
+          cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml << 'ENDOFFILE'
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background"/>
+    <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+</adaptive-icon>
+ENDOFFILE
+          cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml \
+             app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+
+          # PNG ikonlar — Python ile uret (density klasorleri icin)
+          python3 - << 'PYEOF'
+import struct, zlib, os
+
+def make_png(sz):
+    rows = []
+    for y in range(sz):
+        row = [0]
+        for x in range(sz):
+            r, g, b, a = 0x8B, 0x45, 0x13, 255
+            brd = int(sz * 0.08)
+            if x < brd or x >= sz-brd or y < brd or y >= sz-brd:
+                r, g, b = 0x5C, 0x20, 0x08
+            cx1, cy1, cr = int(sz*0.33), int(sz*0.33), int(sz*0.17)
+            if (x-cx1)**2+(y-cy1)**2 < cr**2:
+                r, g, b = 0x8B, 0x3A, 0x1A
+            if (x-cx1)**2+(y-cy1)**2 < (cr//2)**2:
+                r, g, b = 0xC0, 0x62, 0x2A
+            cx2, cy2 = int(sz*0.67), int(sz*0.67)
+            if (x-cx2)**2+(y-cy2)**2 < cr**2:
+                r, g, b = 0xDA, 0xA5, 0x20
+            if (x-cx2)**2+(y-cy2)**2 < (cr//2)**2:
+                r, g, b = 0xFF, 0xD7, 0x00
+            row += [r, g, b, a]
+        rows.append(bytes(row))
+    def chunk(t, d):
+        return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t+d) & 0xffffffff)
+    hdr = struct.pack('>IIBBBBB', sz, sz, 8, 2, 0, 0, 0)
+    return b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', hdr) + chunk(b'IDAT', zlib.compress(b''.join(rows))) + chunk(b'IEND', b'')
+
+for folder, sz in [('mipmap-hdpi',48),('mipmap-xhdpi',72),('mipmap-xxhdpi',96),('mipmap-xxxhdpi',144)]:
+    path = f'app/src/main/res/{folder}'
+    os.makedirs(path, exist_ok=True)
+    data = make_png(sz)
+    open(f'{path}/ic_launcher.png', 'wb').write(data)
+    open(f'{path}/ic_launcher_round.png', 'wb').write(data)
+    print(f'{folder} {sz}px OK')
+PYEOF
+          echo "Kaynaklar tamam"
+
+      - name: Write layout files
+        run: |
+          cat > app/src/main/res/layout/activity_main.xml << 'ENDOFFILE'
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:gravity="center"
+    android:background="@color/ui_bg" android:padding="24dp">
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:text="&#9820;" android:textSize="56sp" android:textColor="@color/ui_gold"
+        android:layout_marginBottom="4dp"/>
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:text="DAMA" android:textSize="36sp" android:textStyle="bold"
+        android:textColor="@color/ui_text" android:letterSpacing="0.18"
+        android:layout_marginBottom="2dp"/>
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:text="Gercekci Ahsap Dama" android:textSize="13sp"
+        android:textColor="@color/ui_text_dim" android:layout_marginBottom="36dp"/>
+    <LinearLayout android:layout_width="260dp" android:layout_height="wrap_content"
+        android:orientation="vertical" android:padding="18dp"
+        android:background="@drawable/bg_panel">
+        <Button android:id="@+id/btnVsAI"
+            android:layout_width="match_parent" android:layout_height="52dp"
+            android:text="@string/vs_ai" android:background="@drawable/bg_btn_gold"
+            android:textColor="@color/ui_bg" android:textStyle="bold"
+            android:textSize="14sp" android:layout_marginBottom="10dp"/>
+        <Button android:id="@+id/btnLocal"
+            android:layout_width="match_parent" android:layout_height="52dp"
+            android:text="@string/vs_local" android:background="@drawable/bg_btn"
+            android:textColor="@color/ui_text" android:textSize="13sp"
+            android:layout_marginBottom="10dp"/>
+        <Button android:id="@+id/btnOnline"
+            android:layout_width="match_parent" android:layout_height="52dp"
+            android:text="@string/online" android:background="@drawable/bg_btn"
+            android:textColor="@color/ui_text" android:textSize="13sp"/>
+    </LinearLayout>
+    <LinearLayout android:layout_width="260dp" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:gravity="center"
+        android:layout_marginTop="14dp">
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="Zorluk: " android:textColor="@color/ui_text_dim" android:textSize="13sp"/>
+        <Button android:id="@+id/btnEasy"
+            android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1"
+            android:text="Kolay" android:background="@drawable/bg_btn"
+            android:textColor="@color/ui_text" android:textSize="11sp"
+            android:layout_marginStart="4dp"/>
+        <Button android:id="@+id/btnMed"
+            android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1"
+            android:text="Orta" android:background="@drawable/bg_btn_gold"
+            android:textColor="@color/ui_bg" android:textSize="11sp"
+            android:layout_marginStart="4dp"/>
+        <Button android:id="@+id/btnHard"
+            android:layout_width="0dp" android:layout_height="36dp" android:layout_weight="1"
+            android:text="Zor" android:background="@drawable/bg_btn"
+            android:textColor="@color/ui_text" android:textSize="11sp"
+            android:layout_marginStart="4dp"/>
+    </LinearLayout>
+</LinearLayout>
+ENDOFFILE
+
+          cat > app/src/main/res/layout/activity_game.xml << 'ENDOFFILE'
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:background="@color/ui_bg">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="52dp"
+        android:orientation="horizontal" android:gravity="center_vertical"
+        android:paddingStart="12dp" android:paddingEnd="12dp"
+        android:background="@color/wood_border">
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <View android:layout_width="18dp" android:layout_height="18dp"
+                android:background="@color/piece_dark_top" android:layout_marginEnd="6dp"/>
+            <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:orientation="vertical">
+                <TextView android:id="@+id/tvP1Name" android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:text="Koyu"
+                    android:textColor="@color/ui_text" android:textSize="13sp"
+                    android:textStyle="bold"/>
+                <TextView android:id="@+id/tvP1Count" android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:text="12 tas"
+                    android:textColor="@color/ui_text_dim" android:textSize="10sp"/>
+            </LinearLayout>
+        </LinearLayout>
+        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:orientation="vertical" android:gravity="center">
+            <TextView android:id="@+id/tvTimer" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:text="--"
+                android:textColor="@color/ui_gold" android:textSize="20sp"
+                android:textStyle="bold" android:gravity="center" android:minWidth="50dp"/>
+            <TextView android:id="@+id/tvTurn" android:layout_width="wrap_content"
+                android:layout_height="wrap_content" android:text="Hazir"
+                android:textColor="@color/ui_text_dim" android:textSize="9sp"
+                android:gravity="center"/>
+        </LinearLayout>
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:orientation="horizontal"
+            android:gravity="center_vertical|end">
+            <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:orientation="vertical" android:gravity="end">
+                <TextView android:id="@+id/tvP2Name" android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:text="Acik"
+                    android:textColor="@color/ui_text" android:textSize="13sp"
+                    android:textStyle="bold"/>
+                <TextView android:id="@+id/tvP2Count" android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:text="12 tas"
+                    android:textColor="@color/ui_text_dim" android:textSize="10sp"/>
+            </LinearLayout>
+            <View android:layout_width="18dp" android:layout_height="18dp"
+                android:background="@color/piece_light_top" android:layout_marginStart="6dp"/>
+        </LinearLayout>
+    </LinearLayout>
+    <com.damax.game.BoardView android:id="@+id/boardView"
+        android:layout_width="match_parent" android:layout_height="0dp"
+        android:layout_weight="1"/>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="52dp"
+        android:orientation="horizontal" android:gravity="center"
+        android:background="@color/wood_border"
+        android:paddingStart="8dp" android:paddingEnd="8dp">
+        <Button android:id="@+id/btnUndo"
+            android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1"
+            android:text="@string/undo" android:background="@drawable/bg_btn"
+            android:textColor="@color/ui_text" android:textSize="12sp"
+            android:layout_marginEnd="4dp"/>
+        <Button android:id="@+id/btnNewGame"
+            android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1"
+            android:text="@string/new_game" android:background="@drawable/bg_btn_gold"
+            android:textColor="@color/ui_bg" android:textStyle="bold"
+            android:textSize="12sp" android:layout_marginEnd="4dp"/>
+        <Button android:id="@+id/btnMenu"
+            android:layout_width="0dp" android:layout_height="40dp" android:layout_weight="1"
+            android:text="@string/menu" android:background="@drawable/bg_btn"
+            android:textColor="@color/ui_text" android:textSize="12sp"/>
+    </LinearLayout>
+</LinearLayout>
+ENDOFFILE
+
+          cat > app/src/main/res/layout/activity_online.xml << 'ENDOFFILE'
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:background="@color/ui_bg" android:padding="20dp">
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:text="Online Oyun" android:textSize="22sp" android:textStyle="bold"
+        android:textColor="@color/ui_gold" android:layout_marginBottom="4dp"/>
+    <TextView android:id="@+id/tvStatus" android:layout_width="wrap_content"
+        android:layout_height="wrap_content" android:text="Bagli degil"
+        android:textSize="12sp" android:textColor="@color/ui_text_dim"
+        android:layout_marginBottom="16dp"/>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:background="@drawable/bg_panel"
+        android:padding="14dp" android:layout_marginBottom="12dp">
+        <EditText android:id="@+id/etIP" android:layout_width="match_parent"
+            android:layout_height="46dp" android:hint="@string/server_hint"
+            android:background="@drawable/bg_input" android:textColor="@color/ui_text"
+            android:textColorHint="@color/ui_text_dim"
+            android:paddingStart="12dp" android:paddingEnd="12dp"
+            android:inputType="text" android:layout_marginBottom="8dp"/>
+        <EditText android:id="@+id/etName" android:layout_width="match_parent"
+            android:layout_height="46dp" android:hint="@string/name_hint"
+            android:background="@drawable/bg_input" android:textColor="@color/ui_text"
+            android:textColorHint="@color/ui_text_dim"
+            android:paddingStart="12dp" android:paddingEnd="12dp"
+            android:inputType="text" android:layout_marginBottom="8dp"/>
+        <Button android:id="@+id/btnConnect" android:layout_width="match_parent"
+            android:layout_height="48dp" android:text="@string/connect"
+            android:background="@drawable/bg_btn_gold"
+            android:textColor="@color/ui_bg" android:textStyle="bold"/>
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:layout_marginBottom="10dp">
+        <Button android:id="@+id/btnCreate" android:layout_width="0dp"
+            android:layout_height="48dp" android:layout_weight="1"
+            android:text="@string/create_room" android:background="@drawable/bg_btn"
+            android:textColor="@color/ui_text" android:layout_marginEnd="6dp"/>
+        <Button android:id="@+id/btnJoin" android:layout_width="0dp"
+            android:layout_height="48dp" android:layout_weight="1"
+            android:text="@string/join_room" android:background="@drawable/bg_btn"
+            android:textColor="@color/ui_text"/>
+    </LinearLayout>
+    <EditText android:id="@+id/etCode" android:layout_width="match_parent"
+        android:layout_height="52dp" android:hint="@string/room_code_hint"
+        android:background="@drawable/bg_input" android:textColor="@color/ui_text"
+        android:textColorHint="@color/ui_text_dim"
+        android:paddingStart="14dp" android:paddingEnd="14dp"
+        android:gravity="center" android:letterSpacing="0.2"
+        android:textSize="18sp" android:inputType="textCapCharacters"
+        android:layout_marginBottom="12dp"/>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp"
+        android:layout_weight="1" android:orientation="vertical"
+        android:background="@drawable/bg_panel" android:padding="10dp">
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="Sohbet" android:textColor="@color/ui_gold"
+            android:textSize="11sp" android:layout_marginBottom="6dp"/>
+        <ScrollView android:id="@+id/scrollChat" android:layout_width="match_parent"
+            android:layout_height="0dp" android:layout_weight="1">
+            <LinearLayout android:id="@+id/chatContainer"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="vertical"/>
+        </ScrollView>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="44dp"
+            android:orientation="horizontal" android:layout_marginTop="6dp">
+            <EditText android:id="@+id/etChat" android:layout_width="0dp"
+                android:layout_height="match_parent" android:layout_weight="1"
+                android:hint="@string/chat_hint" android:background="@drawable/bg_input"
+                android:textColor="@color/ui_text" android:textColorHint="@color/ui_text_dim"
+                android:paddingStart="10dp" android:paddingEnd="10dp"
+                android:inputType="text" android:layout_marginEnd="6dp"/>
+            <Button android:id="@+id/btnSend" android:layout_width="60dp"
+                android:layout_height="match_parent" android:text="@string/send"
+                android:background="@drawable/bg_btn_gold"
+                android:textColor="@color/ui_bg" android:textSize="12sp"/>
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>
+ENDOFFILE
+          echo "Layout dosyalari tamam"
+
+      - name: Write Java sources
+        run: |
+          cat > app/src/main/java/com/damax/game/GameEngine.java << 'ENDOFFILE'
+package com.damax.game;
+import java.util.*;
+public class GameEngine {
+    public static final int EMPTY=0,P1=1,P2=2,P1K=3,P2K=4;
+    public int[][] board=new int[8][8];
+    public int turn=1;
+    public boolean active=false;
+    public int p1count=12,p2count=12;
+    public int aiLevel=2;
+    public static class Move {
+        public int[]from,to; public List<int[]>caps;
+        public Move(int[]f,int[]t,List<int[]>c){from=f;to=t;caps=c!=null?c:new ArrayList<>();}
+    }
+    public void init(){
+        board=new int[8][8];
+        for(int r=0;r<3;r++)for(int c=0;c<8;c++)if((r+c)%2==1)board[r][c]=P2;
+        for(int r=5;r<8;r++)for(int c=0;c<8;c++)if((r+c)%2==1)board[r][c]=P1;
+        turn=1;active=true;p1count=12;p2count=12;
+    }
+    public List<Move> captures(int[][]b,int r,int c,int pl){
+        int pc=b[r][c];boolean king=pc==P1K||pc==P2K;
+        int[][]dirs=dirs(pl,king);List<Move>res=new ArrayList<>();
+        for(int[]d:dirs){
+            int er=r+d[0],ec=c+d[1],lr=r+2*d[0],lc=c+2*d[1];
+            if(er<0||er>7||ec<0||ec>7||lr<0||lr>7||lc<0||lc>7)continue;
+            int e=b[er][ec];
+            boolean enemy=(pl==1&&(e==P2||e==P2K))||(pl==2&&(e==P1||e==P1K));
+            if(enemy&&b[lr][lc]==EMPTY){
+                List<int[]>cap=new ArrayList<>();cap.add(new int[]{er,ec});
+                res.add(new Move(new int[]{r,c},new int[]{lr,lc},cap));
+            }
+        }
+        return res;
+    }
+    public List<Move> moves(int[][]b,int r,int c,int pl){
+        List<Move>caps=captures(b,r,c,pl);if(!caps.isEmpty())return caps;
+        int pc=b[r][c];boolean king=pc==P1K||pc==P2K;
+        int[][]dirs=dirs(pl,king);List<Move>res=new ArrayList<>();
+        for(int[]d:dirs){int nr=r+d[0],nc=c+d[1];
+            if(nr>=0&&nr<8&&nc>=0&&nc<8&&b[nr][nc]==EMPTY)
+                res.add(new Move(new int[]{r,c},new int[]{nr,nc},null));
+        }
+        return res;
+    }
+    public List<Move> allMoves(int[][]b,int pl){
+        List<Move>all=new ArrayList<>();
+        for(int r=0;r<8;r++)for(int c=0;c<8;c++){
+            int p=b[r][c];
+            if((pl==1&&(p==P1||p==P1K))||(pl==2&&(p==P2||p==P2K)))
+                all.addAll(moves(b,r,c,pl));
+        }
+        boolean hc=false;
+        for(Move m:all)if(!m.caps.isEmpty()){hc=true;break;}
+        if(hc){List<Move>f=new ArrayList<>();for(Move m:all)if(!m.caps.isEmpty())f.add(m);return f;}
+        return all;
+    }
+    public int[][]applyMove(int[][]b,Move m,int pl){
+        int[][]nb=copy(b);int[]f=m.from,t=m.to;
+        nb[t[0]][t[1]]=nb[f[0]][f[1]];nb[f[0]][f[1]]=EMPTY;
+        for(int[]cap:m.caps)nb[cap[0]][cap[1]]=EMPTY;
+        if(nb[t[0]][t[1]]==P1&&t[0]==0)nb[t[0]][t[1]]=P1K;
+        if(nb[t[0]][t[1]]==P2&&t[0]==7)nb[t[0]][t[1]]=P2K;
+        return nb;
+    }
+    public boolean doMove(Move m){
+        int[]t=m.to;
+        board[t[0]][t[1]]=board[m.from[0]][m.from[1]];
+        board[m.from[0]][m.from[1]]=EMPTY;
+        for(int[]cap:m.caps){board[cap[0]][cap[1]]=EMPTY;if(turn==1)p2count--;else p1count--;}
+        boolean king=false;
+        if(board[t[0]][t[1]]==P1&&t[0]==0){board[t[0]][t[1]]=P1K;king=true;}
+        if(board[t[0]][t[1]]==P2&&t[0]==7){board[t[0]][t[1]]=P2K;king=true;}
+        return king;
+    }
+    public int winner(){
+        if(p1count<=0)return 2;if(p2count<=0)return 1;
+        int next=turn==1?2:1;
+        if(allMoves(board,next).isEmpty())return turn;
+        return 0;
+    }
+    public Move aiMove(){
+        List<Move>mv=allMoves(board,2);if(mv.isEmpty())return null;
+        if(aiLevel==1)return mv.get(new Random().nextInt(mv.size()));
+        if(aiLevel==2){
+            List<Move>caps=new ArrayList<>();for(Move m:mv)if(!m.caps.isEmpty())caps.add(m);
+            List<Move>pool=caps.isEmpty()?mv:caps;
+            return pool.get(new Random().nextInt(pool.size()));
+        }
+        Move best=null;int bs=Integer.MIN_VALUE;
+        for(Move m:mv){int s=mm(applyMove(board,m,2),2,false,0);if(s>bs){bs=s;best=m;}}
+        return best;
+    }
+    private int mm(int[][]b,int pl,boolean max,int d){
+        if(d>=4)return eval(b);
+        List<Move>mv=allMoves(b,pl);if(mv.isEmpty())return max?-999:999;
+        if(max){int best=Integer.MIN_VALUE;for(Move m:mv)best=Math.max(best,mm(applyMove(b,m,pl),3-pl,false,d+1));return best;}
+        else{int best=Integer.MAX_VALUE;for(Move m:mv)best=Math.min(best,mm(applyMove(b,m,pl),3-pl,true,d+1));return best;}
+    }
+    private int eval(int[][]b){
+        int s=0;for(int r=0;r<8;r++)for(int c=0;c<8;c++){
+            if(b[r][c]==P1)s-=10;else if(b[r][c]==P1K)s-=18;
+            else if(b[r][c]==P2)s+=10+(7-r);else if(b[r][c]==P2K)s+=18;
+        }return s;
+    }
+    private int[][]dirs(int pl,boolean king){
+        if(king)return new int[][]{{-1,-1},{-1,1},{1,-1},{1,1}};
+        if(pl==1)return new int[][]{{-1,-1},{-1,1}};
+        return new int[][]{{1,-1},{1,1}};
+    }
+    private int[][]copy(int[][]b){
+        int[][]n=new int[8][8];for(int i=0;i<8;i++)System.arraycopy(b[i],0,n[i],0,8);return n;
+    }
+}
+ENDOFFILE
+
+          cat > app/src/main/java/com/damax/game/BoardView.java << 'ENDOFFILE'
+package com.damax.game;
+import android.content.Context;
+import android.graphics.*;
+import android.util.AttributeSet;
+import android.view.*;
+import java.util.*;
+public class BoardView extends View {
+    private static final int DC1=0xFFD49A4A,DC2=0xFFB87830,DC3=0xFFC88840;
+    private static final int LC1=0xFFFFF8E0,LC2=0xFFEED8A0,LC3=0xFFF8ECC0;
+    private static final int D_O=0xFF3A0F04,D_R1=0xFF6B2008,D_R2=0xFF8B3218,D_R3=0xFF9E3C20,D_R4=0xFFB04828,D_C=0xFFC05030,D_S=0xFFD06838;
+    private static final int L_O=0xFFA07010,L_R1=0xFFBE9020,L_R2=0xFFD0A830,L_R3=0xFFDDB840,L_R4=0xFFEACA50,L_C=0xFFF2D860,L_S=0xFFFDE880;
+    private Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
+    private GameEngine eng;
+    private int[]sel;private List<GameEngine.Move>valid=new ArrayList<>();
+    private int[]lastFrom,lastTo;
+    private float cs,ox,oy;
+    private Listener lst;
+    public interface Listener{void onTap(int r,int c);}
+    public BoardView(Context c){super(c);init();}
+    public BoardView(Context c,AttributeSet a){super(c,a);init();}
+    public BoardView(Context c,AttributeSet a,int d){super(c,a,d);init();}
+    private void init(){
+        setOnTouchListener((v,e)->{
+            if(e.getAction()==MotionEvent.ACTION_UP){
+                int col=(int)((e.getX()-ox)/cs),row=(int)((e.getY()-oy)/cs);
+                if(row>=0&&row<8&&col>=0&&col<8&&lst!=null)lst.onTap(row,col);
+                performClick();
+            }
+            return true;
+        });
+    }
+    @Override public boolean performClick(){return super.performClick();}
+    @Override protected void onDraw(Canvas cv){
+        if(eng==null)return;
+        int sz=Math.min(getWidth(),getHeight());
+        float brd=sz*0.045f;
+        cs=(sz-brd*2)/8f;
+        ox=(getWidth()-sz)/2f+brd;
+        oy=(getHeight()-sz)/2f+brd;
+        float wx=(getWidth()-sz)/2f,wy=(getHeight()-sz)/2f;
+        // Dis cerceve
+        p.setStyle(Paint.Style.FILL);
+        p.setShader(new LinearGradient(wx,wy,wx+sz,wy+sz,new int[]{0xFFA05520,0xFF7B3510,0xFF9B4518,0xFF6B2808},null,Shader.TileMode.CLAMP));
+        cv.drawRoundRect(new RectF(wx,wy,wx+sz,wy+sz),14,14,p);
+        p.setShader(null);
+        p.setStyle(Paint.Style.STROKE);p.setColor(0xFF3D1200);p.setStrokeWidth(2f);
+        cv.drawRect(ox-1,oy-1,ox+cs*8+1,oy+cs*8+1,p);
+        p.setStyle(Paint.Style.FILL);
+        // Hucreler
+        for(int r=0;r<8;r++){
+            for(int c=0;c<8;c++){
+                float l=ox+c*cs,t=oy+r*cs;
+                RectF cell=new RectF(l,t,l+cs,t+cs);
+                boolean dark=(r+c)%2==1;
+                if(dark)p.setShader(new LinearGradient(l,t,l+cs,t+cs,new int[]{DC3,DC1,DC2,DC1},null,Shader.TileMode.CLAMP));
+                else p.setShader(new LinearGradient(l,t,l+cs,t+cs,new int[]{LC3,LC1,LC2,LC1},null,Shader.TileMode.CLAMP));
+                cv.drawRect(cell,p);p.setShader(null);
+                // Ahsap doku
+                p.setColor(dark?0x10000000:0x08000000);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(0.7f);
+                for(int i=1;i<5;i++)cv.drawLine(l,t+i*cs/5f,l+cs,t+i*cs/5f+0.8f,p);
+                p.setStyle(Paint.Style.FILL);
+                if(isLast(r,c)){p.setColor(0x40FFD700);cv.drawRect(cell,p);}
+                if(isSel(r,c)){
+                    p.setColor(0x55FFD700);cv.drawRect(cell,p);
+                    p.setStyle(Paint.Style.STROKE);p.setColor(0xCCFFD700);p.setStrokeWidth(3f);
+                    cv.drawRect(cell,p);p.setStyle(Paint.Style.FILL);
+                }
+                GameEngine.Move vm=vAt(r,c);
+                if(vm!=null){
+                    float cx2=l+cs/2,cy2=t+cs/2,dr=cs*0.18f;
+                    p.setShader(new RadialGradient(cx2,cy2,dr,new int[]{vm.caps.isEmpty()?0xCCFFD700:0xCCFF4400,vm.caps.isEmpty()?0x44FFD700:0x44FF4400},null,Shader.TileMode.CLAMP));
+                    cv.drawCircle(cx2,cy2,dr,p);p.setShader(null);
+                }
+            }
+        }
+        // Koordinatlar
+        p.setTextSize(brd*0.5f);p.setColor(0xAAFFE4B5);
+        for(int i=0;i<8;i++){
+            cv.drawText(String.valueOf((char)('a'+i)),ox+i*cs+cs*0.08f,oy+cs*8+brd*0.8f,p);
+            cv.drawText(String.valueOf(8-i),wx+brd*0.1f,oy+i*cs+cs*0.6f,p);
+        }
+        // Taslar
+        for(int r=0;r<8;r++)for(int c=0;c<8;c++){
+            int pc=eng.board[r][c];if(pc==GameEngine.EMPTY)continue;
+            boolean isP1=pc==GameEngine.P1||pc==GameEngine.P1K;
+            boolean king=pc==GameEngine.P1K||pc==GameEngine.P2K;
+            float cx2=ox+c*cs+cs/2,cy2=oy+r*cs+cs/2,pr=cs*0.43f;
+            if(isSel(r,c))pr*=1.06f;
+            drawPiece(cv,cx2,cy2,pr,isP1,king,isSel(r,c));
+        }
+    }
+    private void drawPiece(Canvas cv,float cx,float cy,float r,boolean p1,boolean king,boolean sel){
+        int o=p1?D_O:L_O,r1=p1?D_R1:L_R1,r2=p1?D_R2:L_R2,r3=p1?D_R3:L_R3,r4=p1?D_R4:L_R4,ct=p1?D_C:L_C,sh=p1?D_S:L_S;
+        // Golge
+        p.setShader(new RadialGradient(cx,cy+r*0.15f,r*1.1f,new int[]{0x50000000,0x00000000},null,Shader.TileMode.CLAMP));
+        cv.drawCircle(cx+r*0.04f,cy+r*0.12f,r,p);p.setShader(null);
+        // Secim halkasi
+        if(sel){p.setColor(0xDDFFD700);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(r*0.1f);
+            cv.drawCircle(cx,cy,r+r*0.08f,p);p.setStyle(Paint.Style.FILL);}
+        // Taban
+        p.setShader(new RadialGradient(cx,cy,r,new int[]{r2,o},null,Shader.TileMode.CLAMP));
+        cv.drawCircle(cx,cy,r,p);p.setShader(null);
+        // Konsantrik halkalar
+        float rr=r*0.95f;
+        drawRing(cv,cx,cy,rr,rr*0.07f,o);
+        drawRing(cv,cx,cy,rr*0.84f,rr*0.06f,r1);
+        drawRing(cv,cx,cy,rr*0.68f,rr*0.06f,r2);
+        drawRing(cv,cx,cy,rr*0.50f,rr*0.05f,r3);
+        drawRing(cv,cx,cy,rr*0.32f,rr*0.05f,r4);
+        // Ust yuzey
+        float tx=cx-r*0.22f,ty=cy-r*0.22f;
+        p.setShader(new RadialGradient(tx,ty,r*1.1f,new int[]{sh,ct,r4,r3},new float[]{0f,0.2f,0.6f,1f},Shader.TileMode.CLAMP));
+        cv.drawCircle(cx,cy,rr*0.26f,p);p.setShader(null);
+        // Parlak nokta
+        p.setShader(new RadialGradient(tx,ty,r*0.25f,new int[]{0xBBFFFFFF,0x00FFFFFF},null,Shader.TileMode.CLAMP));
+        cv.drawCircle(tx+r*0.05f,ty+r*0.05f,r*0.22f,p);p.setShader(null);
+        // Dame
+        if(king){p.setColor(0xFFFFD700);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(r*0.09f);
+            cv.drawCircle(cx,cy,rr*0.42f,p);cv.drawCircle(cx,cy,rr*0.22f,p);
+            p.setStyle(Paint.Style.FILL);p.setColor(0xCCFFD700);cv.drawCircle(cx,cy,rr*0.12f,p);}
+    }
+    private void drawRing(Canvas cv,float cx,float cy,float r,float w,int color){
+        p.setColor(color);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(w);
+        cv.drawCircle(cx,cy,r,p);
+        p.setColor(color&0x80FFFFFF);p.setStrokeWidth(w*0.6f);
+        cv.drawArc(new RectF(cx-r,cy-r,cx+r,cy+r),30,180,false,p);
+        p.setStyle(Paint.Style.FILL);
+    }
+    private boolean isSel(int r,int c){return sel!=null&&sel[0]==r&&sel[1]==c;}
+    private boolean isLast(int r,int c){
+        return(lastFrom!=null&&lastFrom[0]==r&&lastFrom[1]==c)||(lastTo!=null&&lastTo[0]==r&&lastTo[1]==c);}
+    private GameEngine.Move vAt(int r,int c){for(GameEngine.Move m:valid)if(m.to[0]==r&&m.to[1]==c)return m;return null;}
+    public void setEngine(GameEngine e){eng=e;invalidate();}
+    public void select(int[]s,List<GameEngine.Move>v){sel=s;valid=v!=null?v:new ArrayList<>();invalidate();}
+    public void clearSel(){sel=null;valid.clear();invalidate();}
+    public void setLast(int[]f,int[]t){lastFrom=f;lastTo=t;invalidate();}
+    public void setListener(Listener l){lst=l;}
+    public void refresh(){invalidate();}
+}
+ENDOFFILE
+
+          cat > app/src/main/java/com/damax/game/SoundManager.java << 'ENDOFFILE'
+package com.damax.game;
+import android.content.Context;
+import android.os.*;
+public class SoundManager {
+    private Vibrator v;private boolean on=true;
+    public SoundManager(Context c){v=(Vibrator)c.getSystemService(Context.VIBRATOR_SERVICE);}
+    public void move(){vib(20);}
+    public void capture(){vib(50);}
+    public void king(){vib(new long[]{0,25,35,65});}
+    public void win(){vib(new long[]{0,70,50,110,50,180});}
+    public void error(){vib(new long[]{0,35,25,35});}
+    public void tick(){vib(10);}
+    private void vib(long ms){if(!on||v==null||!v.hasVibrator())return;
+        v.vibrate(VibrationEffect.createOneShot(ms,VibrationEffect.DEFAULT_AMPLITUDE));}
+    private void vib(long[]pat){if(!on||v==null||!v.hasVibrator())return;
+        v.vibrate(VibrationEffect.createWaveform(pat,-1));}
+    public void setEnabled(boolean e){on=e;}
+}
+ENDOFFILE
+
+          cat > app/src/main/java/com/damax/game/Prefs.java << 'ENDOFFILE'
+package com.damax.game;
+import android.content.*;
+public class Prefs {
+    private SharedPreferences sp;
+    public Prefs(Context c){sp=c.getSharedPreferences("dama",Context.MODE_PRIVATE);}
+    public String name(){return sp.getString("name","Oyuncu");}
+    public void name(String v){sp.edit().putString("name",v).apply();}
+    public String ip(){return sp.getString("ip","192.168.1.5");}
+    public void ip(String v){sp.edit().putString("ip",v).apply();}
+    public int level(){return sp.getInt("level",2);}
+    public void level(int v){sp.edit().putInt("level",v).apply();}
+    public int timer(){return sp.getInt("timer",0);}
+    public void timer(int v){sp.edit().putInt("timer",v).apply();}
+}
+ENDOFFILE
+
+          cat > app/src/main/java/com/damax/game/WsClient.java << 'ENDOFFILE'
+package com.damax.game;
+import android.os.*;
+import com.google.gson.*;import okhttp3.*;
+import java.util.concurrent.TimeUnit;
+public class WsClient {
+    public interface CB{void ok();void fail();void msg(String t,JsonObject d);}
+    private OkHttpClient client;private WebSocket ws;private boolean conn=false;
+    private Handler h=new Handler(Looper.getMainLooper());private CB cb;
+    public WsClient(CB c){cb=c;client=new OkHttpClient.Builder()
+        .connectTimeout(10,TimeUnit.SECONDS).pingInterval(20,TimeUnit.SECONDS).build();}
+    public void connect(String ip,int port){
+        Request req=new Request.Builder().url("ws://"+ip+":"+port+"/ws").build();
+        ws=client.newWebSocket(req,new WebSocketListener(){
+            public void onOpen(WebSocket w,Response r){conn=true;h.post(cb::ok);}
+            public void onMessage(WebSocket w,String t){try{
+                JsonObject o=JsonParser.parseString(t).getAsJsonObject();
+                h.post(()->cb.msg(o.get("type").getAsString(),o));
+            }catch(Exception e){}}
+            public void onClosed(WebSocket w,int c,String r){conn=false;h.post(cb::fail);}
+            public void onFailure(WebSocket w,Throwable t,Response r){conn=false;h.post(cb::fail);}
+        });
+    }
+    public void send(JsonObject o){if(ws!=null&&conn)ws.send(new Gson().toJson(o));}
+    public void close(){if(ws!=null){ws.close(1000,"bye");ws=null;}conn=false;}
+    public boolean connected(){return conn;}
+}
+ENDOFFILE
+
+          cat > app/src/main/java/com/damax/game/MainActivity.java << 'ENDOFFILE'
+package com.damax.game;
+import android.content.Intent;import android.os.Bundle;
+import android.widget.Button;
+import androidx.appcompat.app.AppCompatActivity;
+import com.damax.game.databinding.ActivityMainBinding;
+public class MainActivity extends AppCompatActivity {
+    private ActivityMainBinding b;private Prefs prefs;
+    @Override protected void onCreate(Bundle s){
+        super.onCreate(s);b=ActivityMainBinding.inflate(getLayoutInflater());
+        setContentView(b.getRoot());prefs=new Prefs(this);
+        b.btnVsAI.setOnClickListener(v->go("ai"));
+        b.btnLocal.setOnClickListener(v->go("local"));
+        b.btnOnline.setOnClickListener(v->startActivity(new Intent(this,OnlineActivity.class)));
+        int lv=prefs.level();
+        hi(lv==1?b.btnEasy:lv==3?b.btnHard:b.btnMed);
+        b.btnEasy.setOnClickListener(v->{prefs.level(1);hi(b.btnEasy);});
+        b.btnMed.setOnClickListener(v->{prefs.level(2);hi(b.btnMed);});
+        b.btnHard.setOnClickListener(v->{prefs.level(3);hi(b.btnHard);});
+    }
+    private void go(String m){Intent i=new Intent(this,GameActivity.class);i.putExtra("mode",m);startActivity(i);}
+    private void hi(Button a){
+        for(Button btn:new Button[]{b.btnEasy,b.btnMed,b.btnHard}){
+            btn.setBackgroundResource(R.drawable.bg_btn);btn.setTextColor(getColor(R.color.ui_text));}
+        a.setBackgroundResource(R.drawable.bg_btn_gold);a.setTextColor(getColor(R.color.ui_bg));
+    }
+}
+ENDOFFILE
+
+          cat > app/src/main/java/com/damax/game/GameActivity.java << 'ENDOFFILE'
+package com.damax.game;
+import android.app.AlertDialog;import android.os.*;
+import android.widget.Toast;import androidx.appcompat.app.AppCompatActivity;
+import com.damax.game.databinding.ActivityGameBinding;
+import com.google.gson.JsonObject;
+import java.util.*;import java.util.Stack;
+public class GameActivity extends AppCompatActivity implements BoardView.Listener,WsClient.CB {
+    private ActivityGameBinding b;
+    private GameEngine eng;private SoundManager snd;private Prefs prefs;
+    private String mode;private int myColor=1;private boolean myTurn=true;private String room="";
+    private int[]sel=null;private List<GameEngine.Move>valid=new ArrayList<>();private int[]cc=null;
+    private Stack<int[][]>uB=new Stack<>();private Stack<int[]>uC=new Stack<>();
+    private CountDownTimer tmr;private int tsec=0;private WsClient ws;
+    @Override protected void onCreate(Bundle s){
+        super.onCreate(s);b=ActivityGameBinding.inflate(getLayoutInflater());
+        setContentView(b.getRoot());prefs=new Prefs(this);snd=new SoundManager(this);
+        eng=new GameEngine();eng.aiLevel=prefs.level();
+        mode=getIntent().getStringExtra("mode");if(mode==null)mode="ai";
+        b.boardView.setEngine(eng);b.boardView.setListener(this);
+        b.btnUndo.setOnClickListener(v->undo());
+        b.btnNewGame.setOnClickListener(v->ng());
+        b.btnMenu.setOnClickListener(v->finish());
+        if("online".equals(mode)){ws=new WsClient(this);
+            ws.connect(getIntent().getStringExtra("ip")!=null?getIntent().getStringExtra("ip"):prefs.ip(),3000);}
+        names();ng();
+    }
+    private void ng(){
+        eng.init();sel=null;valid.clear();cc=null;uB.clear();uC.clear();
+        b.boardView.setLast(null,null);b.boardView.clearSel();
+        myTurn=!"online".equals(mode)||myColor==1;
+        stopT();tsec=prefs.timer();
+        if(tsec>0)startT(tsec);else b.tvTimer.setText("--");
+        ui();b.boardView.refresh();
+        if("ai".equals(mode)&&eng.turn==2)ai();
+    }
+    @Override public void onTap(int r,int c){
+        if(!eng.active)return;
+        if("online".equals(mode)&&!myTurn){toast("Sira sende degil");return;}
+        int pl=eng.turn,pc=eng.board[r][c];
+        boolean mine=(pl==1&&(pc==GameEngine.P1||pc==GameEngine.P1K))||(pl==2&&(pc==GameEngine.P2||pc==GameEngine.P2K));
+        if(cc!=null){GameEngine.Move vm=vAt(r,c);if(vm!=null){dm(vm);return;}return;}
+        if(sel!=null){GameEngine.Move vm=vAt(r,c);if(vm!=null){dm(vm);return;}
+            if(mine){pick(r,c);return;}clr();return;}
+        if(mine){
+            List<GameEngine.Move>all=eng.allMoves(eng.board,pl);
+            boolean forced=false;for(GameEngine.Move m:all)if(!m.caps.isEmpty()){forced=true;break;}
+            List<GameEngine.Move>my=eng.moves(eng.board,r,c,pl);
+            boolean myCap=false;for(GameEngine.Move m:my)if(!m.caps.isEmpty()){myCap=true;break;}
+            if(forced&&!myCap){snd.error();toast("Zorunlu yeme var!");return;}
+            pick(r,c);
+        }
+    }
+    private void pick(int r,int c){sel=new int[]{r,c};valid=eng.moves(eng.board,r,c,eng.turn);b.boardView.select(sel,valid);}
+    private void clr(){sel=null;valid.clear();cc=null;b.boardView.clearSel();}
+    private GameEngine.Move vAt(int r,int c){for(GameEngine.Move m:valid)if(m.to[0]==r&&m.to[1]==c)return m;return null;}
+    private void dm(GameEngine.Move mv){
+        int[][]cp=new int[8][8];for(int i=0;i<8;i++)System.arraycopy(eng.board[i],0,cp[i],0,8);
+        uB.push(cp);uC.push(new int[]{eng.p1count,eng.p2count,eng.turn});
+        boolean king=eng.doMove(mv);
+        b.boardView.setLast(mv.from,mv.to);
+        if(!mv.caps.isEmpty())snd.capture();else snd.move();
+        if(king){snd.king();toast("Dame!");}
+        if("online".equals(mode)&&ws!=null){
+            JsonObject o=new JsonObject();o.addProperty("type","move");o.addProperty("room",room);
+            JsonObject m=new JsonObject();m.addProperty("fr",mv.from[0]);m.addProperty("fc",mv.from[1]);
+            m.addProperty("tr",mv.to[0]);m.addProperty("tc",mv.to[1]);o.add("move",m);ws.send(o);}
+        if(!mv.caps.isEmpty()){int[]t=mv.to;List<GameEngine.Move>chain=eng.captures(eng.board,t[0],t[1],eng.turn);
+            if(!chain.isEmpty()){cc=t;sel=t;valid=chain;b.boardView.select(sel,valid);ui();b.boardView.refresh();return;}}
+        cc=null;ui();
+        int w=eng.winner();if(w!=0){over(w);return;}
+        eng.turn=eng.turn==1?2:1;myTurn="local".equals(mode)||myColor==eng.turn;
+        clr();ui();resetT();b.boardView.refresh();
+        if("ai".equals(mode)&&eng.turn==2)new Handler().postDelayed(this::ai,650);
+    }
+    private void ai(){if(!eng.active||eng.turn!=2)return;GameEngine.Move m=eng.aiMove();if(m!=null)dm(m);else over(1);}
+    private void undo(){
+        if(uB.isEmpty()){toast("Geri alinacak hamle yok");return;}
+        if("online".equals(mode)){toast("Online modda geri alma yok");return;}
+        eng.board=uB.pop();int[]c=uC.pop();eng.p1count=c[0];eng.p2count=c[1];eng.turn=c[2];
+        eng.active=true;cc=null;b.boardView.setLast(null,null);clr();ui();b.boardView.refresh();}
+    private void over(int w){
+        eng.active=false;stopT();snd.win();
+        new AlertDialog.Builder(this).setTitle("Oyun Bitti")
+            .setMessage(w==1?"Koyu taraf kazandi!":"Acik taraf kazandi!")
+            .setPositiveButton("Tekrar",(_,__)-> ng())
+            .setNegativeButton("Menu",(_,__)->finish()).setCancelable(false).show();}
+    private void names(){
+        if("ai".equals(mode)){b.tvP1Name.setText("Sen");b.tvP2Name.setText("Bilgisayar");}
+        else{b.tvP1Name.setText("Oyuncu 1");b.tvP2Name.setText("Oyuncu 2");}}
+    private void ui(){
+        b.tvP1Count.setText(eng.p1count+" tas");b.tvP2Count.setText(eng.p2count+" tas");
+        String t="local".equals(mode)||myTurn?"Senin Siran":"ai".equals(mode)&&eng.turn==2?"Bilgisayar...":"Rakip...";
+        b.tvTurn.setText(t);b.tvP1Name.setAlpha(eng.turn==1?1f:0.5f);b.tvP2Name.setAlpha(eng.turn==2?1f:0.5f);}
+    private void startT(int sec){tmr=new CountDownTimer(sec*1000L,1000){
+        public void onTick(long ms){int s=(int)(ms/1000);
+            b.tvTimer.setText(s>60?(s/60)+":"+(s%60<10?"0":"")+s%60:String.valueOf(s));
+            if(s<=5)snd.tick();}
+        public void onFinish(){over(eng.turn==1?2:1);}}.start();}
+    private void resetT(){stopT();if(tsec>0)startT(tsec);}
+    private void stopT(){if(tmr!=null){tmr.cancel();tmr=null;}}
+    @Override public void ok(){toast("Baglandi");}
+    @Override public void fail(){toast("Baglanamadi");}
+    @Override public void msg(String t,JsonObject d){
+        switch(t){
+            case "gameStart":myColor=d.get("yourColor").getAsInt();myTurn=myColor==1;
+                room=d.has("room")?d.get("room").getAsString():"";
+                b.tvP1Name.setText(d.get("p1name").getAsString());
+                b.tvP2Name.setText(d.get("p2name").getAsString());ng();break;
+            case "move":JsonObject mv=d.getAsJsonObject("move");
+                dm(new GameEngine.Move(new int[]{mv.get("fr").getAsInt(),mv.get("fc").getAsInt()},
+                    new int[]{mv.get("tr").getAsInt(),mv.get("tc").getAsInt()},new ArrayList<>()));break;
+            case "opponentLeft":toast("Rakip ayrildi!");break;}}
+    private void toast(String s){Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}
+    @Override protected void onDestroy(){super.onDestroy();stopT();if(ws!=null)ws.close();}
+}
+ENDOFFILE
+
+          cat > app/src/main/java/com/damax/game/OnlineActivity.java << 'ENDOFFILE'
+package com.damax.game;
+import android.content.Intent;import android.os.Bundle;
+import android.widget.*;import androidx.appcompat.app.AppCompatActivity;
+import com.damax.game.databinding.ActivityOnlineBinding;
+import com.google.gson.*;
+public class OnlineActivity extends AppCompatActivity implements WsClient.CB {
+    private ActivityOnlineBinding b;private WsClient ws;private Prefs prefs;
+    @Override protected void onCreate(Bundle s){
+        super.onCreate(s);b=ActivityOnlineBinding.inflate(getLayoutInflater());
+        setContentView(b.getRoot());prefs=new Prefs(this);
+        b.etIP.setText(prefs.ip());b.etName.setText(prefs.name());
+        b.btnConnect.setOnClickListener(v->conn());
+        b.btnCreate.setOnClickListener(v->create());
+        b.btnJoin.setOnClickListener(v->join());
+        b.btnSend.setOnClickListener(v->chat());
+    }
+    private void conn(){
+        String ip=b.etIP.getText().toString().trim(),nm=b.etName.getText().toString().trim();
+        if(ip.isEmpty()||nm.isEmpty()){t("IP ve ad girin");return;}
+        prefs.ip(ip);prefs.name(nm);b.tvStatus.setText("Baglaniliyor...");
+        if(ws!=null)ws.close();ws=new WsClient(this);ws.connect(ip,3000);}
+    private void create(){if(ws==null||!ws.connected()){t("Once baglanin");return;}
+        JsonObject o=new JsonObject();o.addProperty("type","createRoom");o.addProperty("name",prefs.name());ws.send(o);}
+    private void join(){if(ws==null||!ws.connected()){t("Once baglanin");return;}
+        String code=b.etCode.getText().toString().trim().toUpperCase();
+        if(code.isEmpty()){t("Oda kodu girin");return;}
+        JsonObject o=new JsonObject();o.addProperty("type","joinRoom");
+        o.addProperty("code",code);o.addProperty("name",prefs.name());ws.send(o);}
+    private void chat(){String msg=b.etChat.getText().toString().trim();if(msg.isEmpty())return;
+        addChat("Sen",msg);b.etChat.setText("");
+        if(ws!=null&&ws.connected()){JsonObject o=new JsonObject();
+            o.addProperty("type","chat");o.addProperty("msg",msg);o.addProperty("name",prefs.name());ws.send(o);}}
+    private void addChat(String who,String msg){
+        TextView tv=new TextView(this);tv.setText(who+": "+msg);
+        tv.setTextColor(0xFFFFE4B5);tv.setTextSize(12);tv.setPadding(4,2,4,2);
+        b.chatContainer.addView(tv);
+        b.scrollChat.post(()->b.scrollChat.fullScroll(android.view.View.FOCUS_DOWN));}
+    @Override public void ok(){b.tvStatus.setText("Baglandi");}
+    @Override public void fail(){b.tvStatus.setText("Baglanamadi");}
+    @Override public void msg(String tp,JsonObject d){switch(tp){
+        case "roomCreated":String c=d.get("code").getAsString();
+            b.tvStatus.setText("Oda: "+c);addChat("Sistem","Oda: "+c);break;
+        case "gameStart":Intent i=new Intent(this,GameActivity.class);
+            i.putExtra("mode","online");i.putExtra("ip",prefs.ip());startActivity(i);break;
+        case "chat":addChat(d.get("name").getAsString(),d.get("msg").getAsString());break;
+        case "error":t(d.get("msg").getAsString());break;}}
+    private void t(String s){Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}
+    @Override protected void onDestroy(){super.onDestroy();if(ws!=null)ws.close();}
+}
+ENDOFFILE
+          echo "Java dosyalari tamam"
+
+      # ═══════════════════════════════════════════════════════════════
+      # BUILD
+      # ═══════════════════════════════════════════════════════════════
       - name: Build Debug APK
         run: gradle assembleDebug --stacktrace
 
@@ -1200,32 +1093,20 @@ jobs:
           find app/build/outputs/apk/debug -name "*.apk" -exec cp {} out/Dama-ahsap-v1.0.apk \;
           ls -lh out/
 
-      # ═══════════════════════════════════════════════════════════
-      # ADIM 4 — ARTIFACT YUKLE
-      # ═══════════════════════════════════════════════════════════
-      - name: Upload APK artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Dama-Ahsap-APK-${{ github.run_number }}
+          name: Dama-APK-${{ github.run_number }}
           path: out/Dama-ahsap-v1.0.apk
           retention-days: 90
 
-      - name: Build Summary
+      - name: Summary
         run: |
-          echo "## ✅ Dama APK Hazir!" >> $GITHUB_STEP_SUMMARY
-          echo "| | |" >> $GITHUB_STEP_SUMMARY
-          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
-          echo "| 🎨 Tema | Gercekci ahsap tahta + 3D konsantrik taslar |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🤖 AI | Minimax 3 seviye |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🌐 Online | WebSocket oda sistemi |" >> $GITHUB_STEP_SUMMARY
-          echo "| 📱 Min SDK | Android 7.0 (API 24) |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🏗 Build | #${{ github.run_number }} |" >> $GITHUB_STEP_SUMMARY
+          echo "## Dama APK Hazir!" >> $GITHUB_STEP_SUMMARY
           SZ=$(du -h out/Dama-ahsap-v1.0.apk 2>/dev/null|cut -f1||echo "?")
-          echo "| 📦 Boyut | $SZ |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Actions → Artifacts → Dama-Ahsap-APK-${{ github.run_number }}** → indir → kur" >> $GITHUB_STEP_SUMMARY
+          echo "Boyut: $SZ | Build: #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "Actions > Artifacts > Dama-APK-${{ github.run_number }} > indir > kur" >> $GITHUB_STEP_SUMMARY
 
-  # ── Release (tag push'ta) ──────────────────────────────────────
   release:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
@@ -1233,24 +1114,12 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: Dama-Ahsap-APK-${{ github.run_number }}
+          name: Dama-APK-${{ github.run_number }}
           path: out/
       - uses: softprops/action-gh-release@v2
         with:
           files: out/*.apk
           name: "Dama Ahsap ${{ github.ref_name }}"
-          body: |
-            ## 🎮 Gercekci Ahsap Dama ${{ github.ref_name }}
-            Indir, kur, oyna!
-            - Gercekci ahsap tahta (karanlik/acik hucre doku efekti)
-            - 3D konsantrik halka taslar (resimde goruldugu gibi)
-            - Koyu (kahverengi) vs Acik (krem/altin)
-            - AI / 2 Oyuncu / Online modlar
+          body: "Gercekci ahsap dama - AI / 2 Oyuncu / Online"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-# ═══════════════════════════════════════════════════════════════
-# KULLANIM: .github/workflows/build-apk.yml olarak kaydet → push
-# APK: Actions → Artifacts → Dama-Ahsap-APK-*
-# Release: git tag v1.0.0 && git push origin v1.0.0
-# ═══════════════════════════════════════════════════════════════
