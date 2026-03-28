@@ -44,6 +44,7 @@ jobs:
           mkdir -p app/src/main/res/mipmap-xhdpi
           mkdir -p app/src/main/res/mipmap-xxhdpi
           mkdir -p app/src/main/res/mipmap-xxxhdpi
+          mkdir -p app/src/main/res/mipmap-anydpi-v26
           mkdir -p gradle/wrapper
           echo "Dizinler oluşturuldu"
 
@@ -174,7 +175,9 @@ jobs:
                   android:roundIcon="@mipmap/ic_launcher_round"
                   android:supportsRtl="true"
                   android:hardwareAccelerated="true"
-                  android:theme="@style/Theme.DamaX">
+                  android:theme="@style/Theme.DamaX"
+                  xmlns:tools="http://schemas.android.com/tools"
+                  tools:replace="android:icon,android:roundIcon">
                   <activity android:name=".SplashActivity"
                       android:exported="true"
                       android:screenOrientation="portrait"
@@ -407,6 +410,7 @@ jobs:
           </shape>
           INPUT_EOF
 
+          # ── Adaptive icon (sadece anydpi-v26 klasöründe!) ──────────
           cat > app/src/main/res/drawable/ic_launcher_foreground.xml << 'ICON_EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <vector xmlns:android="http://schemas.android.com/apk/res/android"
@@ -434,18 +438,65 @@ jobs:
           </shape>
           ICONBG_EOF
 
-          # Adaptive icon launcher
-          for d in mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
-            cat > app/src/main/res/$d/ic_launcher.xml << 'LAUNCHER_EOF'
+          # ── Adaptive icon XML sadece mipmap-anydpi-v26 altına! ──────
+          cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml << 'ADAPTIVE_EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
               <background android:drawable="@drawable/ic_launcher_background"/>
               <foreground android:drawable="@drawable/ic_launcher_foreground"/>
           </adaptive-icon>
-          LAUNCHER_EOF
-            cp app/src/main/res/$d/ic_launcher.xml app/src/main/res/$d/ic_launcher_round.xml
-          done
-          echo "Drawables yazıldı"
+          ADAPTIVE_EOF
+          cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml \
+             app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+
+          # ── PNG icon üret (Python ile) — density klasörleri için ────
+          python3 - << 'PYICON_EOF'
+          import struct, zlib, os
+
+          def make_png(size, bg):
+              w = h = size
+              raw = []
+              for y in range(h):
+                  row = [0]
+                  for x in range(w):
+                      cx, cy = w/2.0, h/2.0
+                      dist = ((x-cx)**2 + (y-cy)**2)**0.5
+                      r2, g2, b2, a2 = bg[0], bg[1], bg[2], 255
+                      bx, by, bs = w*0.33, h*0.33, w*0.16
+                      if ((x-bx)**2+(y-by)**2) < bs**2:
+                          r2,g2,b2 = 204,17,51
+                      bx2, by2 = w*0.67, h*0.67
+                      if ((x-bx2)**2+(y-by2)**2) < bs**2:
+                          r2,g2,b2 = 17,68,204
+                      outer = min(w,h)*0.48
+                      inner = min(w,h)*0.44
+                      if inner < dist < outer:
+                          r2,g2,b2 = 201,168,76
+                      row += [r2, g2, b2, a2]
+                  raw.append(bytes(row))
+              def chunk(tag, data):
+                  c = zlib.crc32(tag + data) & 0xffffffff
+                  return struct.pack('>I', len(data)) + tag + data + struct.pack('>I', c)
+              ihdr = struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)
+              compressed = zlib.compress(b''.join(raw))
+              return (b'\x89PNG\r\n\x1a\n' +
+                      chunk(b'IHDR', ihdr) +
+                      chunk(b'IDAT', compressed) +
+                      chunk(b'IEND', b''))
+
+          configs = {'mipmap-hdpi':48,'mipmap-xhdpi':72,'mipmap-xxhdpi':96,'mipmap-xxxhdpi':144}
+          bg = (15, 24, 48)
+          for folder, size in configs.items():
+              path = f'app/src/main/res/{folder}'
+              os.makedirs(path, exist_ok=True)
+              png = make_png(size, bg)
+              for name in ['ic_launcher.png', 'ic_launcher_round.png']:
+                  with open(f'{path}/{name}', 'wb') as f:
+                      f.write(png)
+              print(f'{folder}: {size}x{size} PNG yazildi')
+          PYICON_EOF
+
+          echo "Tüm drawables/mipmaps yazıldı"
 
       # ─── res/layout/activity_splash.xml ──────────────────────
       - name: Write layout files
