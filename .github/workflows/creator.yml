@@ -32,7 +32,7 @@ jobs:
         run: |
           cat > tinetv_app/pubspec.yaml << 'PUBSPEC'
           name: tinetv
-          description: TinetV IPTV uygulamasi
+          description: TinetV IPTV
           publish_to: 'none'
           version: 1.0.0+1
 
@@ -42,10 +42,11 @@ jobs:
           dependencies:
             flutter:
               sdk: flutter
-            video_player: ^2.8.6
-            chewie: 1.7.4
             http: ^1.2.1
             cached_network_image: ^3.3.1
+            better_player: ^0.0.84
+            native_device_orientation: ^2.0.1
+            wakelock_plus: ^1.2.8
 
           dev_dependencies:
             flutter_test:
@@ -59,48 +60,106 @@ jobs:
       - name: main.dart yaz
         run: |
           cat > tinetv_app/lib/main.dart << 'MAINDART'
+          import 'dart:async';
           import 'package:flutter/material.dart';
           import 'package:flutter/services.dart';
           import 'package:http/http.dart' as http;
-          import 'package:video_player/video_player.dart';
-          import 'package:chewie/chewie.dart';
           import 'package:cached_network_image/cached_network_image.dart';
+          import 'package:better_player/better_player.dart';
+          import 'package:native_device_orientation/native_device_orientation.dart';
+          import 'package:wakelock_plus/wakelock_plus.dart';
 
           void main() {
             WidgetsFlutterBinding.ensureInitialized();
+            SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
             runApp(const MyApp());
           }
 
+          // ── MODEL ─────────────────────────────────────────────────────────────
           class Channel {
             final String name;
             final String url;
             final String? logo;
             final String? group;
-            Channel({required this.name, required this.url, this.logo, this.group});
+            final String? userAgent;
+            final String? referrer;
+            final String? origin;
+
+            Channel({
+              required this.name,
+              required this.url,
+              this.logo,
+              this.group,
+              this.userAgent,
+              this.referrer,
+              this.origin,
+            });
           }
 
+          // ── M3U PARSER ────────────────────────────────────────────────────────
           List<Channel> parseM3U(String content) {
             final channels = <Channel>[];
             final lines = content.split('\n');
-            String? name, logo, group;
+            String? name, logo, group, userAgent, referrer, origin;
+
             for (var i = 0; i < lines.length; i++) {
               final line = lines[i].trim();
               if (line.startsWith('#EXTINF')) {
                 name = null; logo = null; group = null;
+                userAgent = null; referrer = null; origin = null;
+
                 final logoMatch = RegExp(r'tvg-logo="([^"]*)"').firstMatch(line);
                 final groupMatch = RegExp(r'group-title="([^"]*)"').firstMatch(line);
+                final uaMatch = RegExp(r'user-agent="([^"]*)"', caseSensitive: false).firstMatch(line);
+                final refMatch = RegExp(r'referrer="([^"]*)"', caseSensitive: false).firstMatch(line);
+                final origMatch = RegExp(r'origin="([^"]*)"', caseSensitive: false).firstMatch(line);
+
                 logo = logoMatch?.group(1);
                 group = groupMatch?.group(1);
+                userAgent = uaMatch?.group(1);
+                referrer = refMatch?.group(1);
+                origin = origMatch?.group(1);
+
                 final commaIdx = line.lastIndexOf(',');
                 if (commaIdx != -1) name = line.substring(commaIdx + 1).trim();
+
+              } else if (line.startsWith('#EXTVLCOPT') && name != null) {
+                // VLC options: http-user-agent, http-referrer
+                final uaOpt = RegExp(r'http-user-agent=(.+)', caseSensitive: false).firstMatch(line);
+                final refOpt = RegExp(r'http-referrer=(.+)', caseSensitive: false).firstMatch(line);
+                if (uaOpt != null) userAgent = uaOpt.group(1)?.trim();
+                if (refOpt != null) referrer = refOpt.group(1)?.trim();
+
               } else if (line.startsWith('http') && name != null) {
-                channels.add(Channel(name: name, url: line, logo: logo, group: group));
+                // URL'de pipe varsa ayir: url|User-Agent=...&Referer=...
+                String url = line;
+                if (line.contains('|')) {
+                  final parts = line.split('|');
+                  url = parts[0].trim();
+                  final opts = parts[1];
+                  final uaPipe = RegExp(r'[Uu]ser-[Aa]gent=([^&\s]+)').firstMatch(opts);
+                  final refPipe = RegExp(r'[Rr]eferer=([^&\s]+)').firstMatch(opts);
+                  final origPipe = RegExp(r'[Oo]rigin=([^&\s]+)').firstMatch(opts);
+                  if (uaPipe != null) userAgent ??= Uri.decodeComponent(uaPipe.group(1)!);
+                  if (refPipe != null) referrer ??= Uri.decodeComponent(refPipe.group(1)!);
+                  if (origPipe != null) origin ??= Uri.decodeComponent(origPipe.group(1)!);
+                }
+                channels.add(Channel(
+                  name: name,
+                  url: url,
+                  logo: logo,
+                  group: group,
+                  userAgent: userAgent,
+                  referrer: referrer,
+                  origin: origin,
+                ));
                 name = null;
               }
             }
             return channels;
           }
 
+          // ── APP ───────────────────────────────────────────────────────────────
           class MyApp extends StatelessWidget {
             const MyApp({super.key});
             @override
@@ -110,14 +169,13 @@ jobs:
                 debugShowCheckedModeBanner: false,
                 theme: ThemeData(
                   brightness: Brightness.dark,
-                  scaffoldBackgroundColor: const Color(0xFF0F0F0F),
+                  scaffoldBackgroundColor: const Color(0xFF0A0A0A),
                   colorScheme: const ColorScheme.dark(
                     primary: Color(0xFFE50914),
-                    surface: Color(0xFF1A1A1A),
+                    surface: Color(0xFF181818),
                   ),
                   appBarTheme: const AppBarTheme(
-                    backgroundColor: Color(0xFF0F0F0F),
-                    foregroundColor: Colors.white,
+                    backgroundColor: Color(0xFF0A0A0A),
                     elevation: 0,
                   ),
                   useMaterial3: true,
@@ -127,6 +185,7 @@ jobs:
             }
           }
 
+          // ── SPLASH ────────────────────────────────────────────────────────────
           class SplashScreen extends StatefulWidget {
             const SplashScreen({super.key});
             @override
@@ -136,59 +195,84 @@ jobs:
           class _SplashScreenState extends State<SplashScreen>
               with SingleTickerProviderStateMixin {
             late AnimationController _ctrl;
+            late Animation<double> _scale;
             late Animation<double> _fade;
 
             @override
             void initState() {
               super.initState();
               _ctrl = AnimationController(
-                  vsync: this, duration: const Duration(milliseconds: 1500));
+                  vsync: this, duration: const Duration(milliseconds: 1200));
+              _scale = Tween(begin: 0.7, end: 1.0)
+                  .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack));
               _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeIn);
               _ctrl.forward();
               Future.delayed(const Duration(seconds: 3), () {
-                if (mounted) {
-                  Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(builder: (_) => const ChannelListScreen()),
-                  );
-                }
+                if (mounted) Navigator.of(context).pushReplacement(
+                  PageRouteBuilder(
+                    pageBuilder: (_, __, ___) => const ChannelListScreen(),
+                    transitionsBuilder: (_, anim, __, child) =>
+                        FadeTransition(opacity: anim, child: child),
+                    transitionDuration: const Duration(milliseconds: 400),
+                  ),
+                );
               });
             }
 
             @override
-            void dispose() {
-              _ctrl.dispose();
-              super.dispose();
-            }
+            void dispose() { _ctrl.dispose(); super.dispose(); }
 
             @override
             Widget build(BuildContext context) {
               return Scaffold(
-                backgroundColor: const Color(0xFF0F0F0F),
+                backgroundColor: const Color(0xFF0A0A0A),
                 body: FadeTransition(
                   opacity: _fade,
                   child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          width: 110, height: 110,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE50914),
-                            borderRadius: BorderRadius.circular(22),
+                    child: ScaleTransition(
+                      scale: _scale,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 100, height: 100,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFFE50914), Color(0xFF8B0000)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFFE50914).withOpacity(0.4),
+                                  blurRadius: 30, spreadRadius: 5,
+                                ),
+                              ],
+                            ),
+                            child: const Icon(Icons.live_tv, size: 58, color: Colors.white),
                           ),
-                          child: const Icon(Icons.live_tv, size: 70, color: Colors.white),
-                        ),
-                        const SizedBox(height: 20),
-                        const Text('TinetV',
-                            style: TextStyle(
-                                color: Colors.white, fontSize: 34,
-                                fontWeight: FontWeight.bold, letterSpacing: 3)),
-                        const SizedBox(height: 6),
-                        const Text('Canli Yayin',
-                            style: TextStyle(color: Colors.white38, fontSize: 13)),
-                        const SizedBox(height: 50),
-                        const CircularProgressIndicator(color: Color(0xFFE50914)),
-                      ],
+                          const SizedBox(height: 22),
+                          const Text('TinetV',
+                              style: TextStyle(
+                                  color: Colors.white, fontSize: 32,
+                                  fontWeight: FontWeight.bold, letterSpacing: 4)),
+                          const SizedBox(height: 6),
+                          const Text('CANLI YAYIN',
+                              style: TextStyle(
+                                  color: Color(0xFFE50914), fontSize: 11,
+                                  letterSpacing: 6, fontWeight: FontWeight.w500)),
+                          const SizedBox(height: 50),
+                          SizedBox(
+                            width: 120,
+                            child: LinearProgressIndicator(
+                              backgroundColor: Colors.white10,
+                              color: const Color(0xFFE50914),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -196,6 +280,7 @@ jobs:
             }
           }
 
+          // ── CHANNEL LIST ──────────────────────────────────────────────────────
           class ChannelListScreen extends StatefulWidget {
             const ChannelListScreen({super.key});
             @override
@@ -213,6 +298,7 @@ jobs:
             bool _loading = true;
             String? _error;
             final _searchCtrl = TextEditingController();
+            final _scrollCtrl = ScrollController();
 
             @override
             void initState() {
@@ -224,18 +310,22 @@ jobs:
             @override
             void dispose() {
               _searchCtrl.dispose();
+              _scrollCtrl.dispose();
               super.dispose();
             }
 
             Future<void> _loadChannels() async {
               setState(() { _loading = true; _error = null; });
               try {
-                final res = await http
-                    .get(Uri.parse(_m3uUrl))
-                    .timeout(const Duration(seconds: 20));
+                final res = await http.get(Uri.parse(_m3uUrl),
+                    headers: {
+                      'User-Agent': 'Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36',
+                    }).timeout(const Duration(seconds: 25));
                 if (res.statusCode == 200) {
                   final channels = parseM3U(res.body);
-                  final groups = ['Tumu', ...{...channels.map((c) => c.group ?? 'Diger')}];
+                  final groupSet = <String>{};
+                  for (final c in channels) groupSet.add(c.group ?? 'Diger');
+                  final groups = ['Tumu', ...groupSet.toList()..sort()];
                   setState(() {
                     _all = channels;
                     _filtered = channels;
@@ -243,13 +333,10 @@ jobs:
                     _loading = false;
                   });
                 } else {
-                  setState(() {
-                    _error = 'Liste alinamadi (${res.statusCode})';
-                    _loading = false;
-                  });
+                  setState(() { _error = 'HTTP ${res.statusCode}'; _loading = false; });
                 }
               } catch (e) {
-                setState(() { _error = 'Baglanti hatasi: $e'; _loading = false; });
+                setState(() { _error = e.toString(); _loading = false; });
               }
             }
 
@@ -257,10 +344,10 @@ jobs:
               final q = _searchCtrl.text.toLowerCase();
               setState(() {
                 _filtered = _all.where((c) {
-                  final groupMatch = _selectedGroup == 'Tumu' ||
+                  final gMatch = _selectedGroup == 'Tumu' ||
                       (c.group ?? 'Diger') == _selectedGroup;
-                  final nameMatch = c.name.toLowerCase().contains(q);
-                  return groupMatch && nameMatch;
+                  final nMatch = c.name.toLowerCase().contains(q);
+                  return gMatch && nMatch;
                 }).toList();
               });
             }
@@ -268,44 +355,72 @@ jobs:
             void _selectGroup(String g) {
               setState(() => _selectedGroup = g);
               _applyFilter();
+              _scrollCtrl.animateTo(0,
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOut);
             }
 
             Widget _logoPlaceholder() => Container(
-              width: 52, height: 52,
-              color: const Color(0xFF1A1A1A),
-              child: const Icon(Icons.tv, color: Colors.white24, size: 28),
+              width: 48, height: 48,
+              decoration: BoxDecoration(
+                color: const Color(0xFF242424),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.tv, color: Colors.white24, size: 24),
             );
 
             @override
             Widget build(BuildContext context) {
               return Scaffold(
-                backgroundColor: const Color(0xFF0F0F0F),
+                backgroundColor: const Color(0xFF0A0A0A),
                 appBar: AppBar(
-                  title: const Text('TinetV',
-                      style: TextStyle(
-                          color: Color(0xFFE50914),
-                          fontWeight: FontWeight.bold, fontSize: 22)),
+                  backgroundColor: const Color(0xFF0A0A0A),
+                  titleSpacing: 16,
+                  title: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE50914),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Icon(Icons.live_tv, size: 16, color: Colors.white),
+                      ),
+                      const SizedBox(width: 10),
+                      const Text('TinetV',
+                          style: TextStyle(
+                              color: Colors.white, fontWeight: FontWeight.bold,
+                              fontSize: 20)),
+                    ],
+                  ),
                   actions: [
                     IconButton(
-                      icon: const Icon(Icons.refresh, color: Colors.white),
+                      icon: const Icon(Icons.refresh, color: Colors.white54),
                       onPressed: _loadChannels,
+                      tooltip: 'Yenile',
                     ),
                   ],
                   bottom: PreferredSize(
-                    preferredSize: const Size.fromHeight(50),
+                    preferredSize: const Size.fromHeight(52),
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
                       child: TextField(
                         controller: _searchCtrl,
-                        style: const TextStyle(color: Colors.white),
+                        style: const TextStyle(color: Colors.white, fontSize: 14),
                         decoration: InputDecoration(
                           hintText: 'Kanal ara...',
-                          hintStyle: const TextStyle(color: Colors.white38),
-                          prefixIcon: const Icon(Icons.search, color: Colors.white38),
+                          hintStyle: const TextStyle(color: Colors.white30, fontSize: 14),
+                          prefixIcon: const Icon(Icons.search, color: Colors.white30, size: 20),
+                          suffixIcon: _searchCtrl.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear, color: Colors.white30, size: 18),
+                                  onPressed: () { _searchCtrl.clear(); _applyFilter(); },
+                                )
+                              : null,
                           filled: true,
-                          fillColor: const Color(0xFF1A1A1A),
+                          fillColor: const Color(0xFF1E1E1E),
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide.none,
                           ),
                           contentPadding: const EdgeInsets.symmetric(vertical: 0),
@@ -316,50 +431,81 @@ jobs:
                 ),
                 body: _loading
                     ? const Center(
-                        child: CircularProgressIndicator(color: Color(0xFFE50914)))
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CircularProgressIndicator(color: Color(0xFFE50914)),
+                            SizedBox(height: 16),
+                            Text('Liste yukleniyor...',
+                                style: TextStyle(color: Colors.white38, fontSize: 13)),
+                          ],
+                        ))
                     : _error != null
                         ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.error_outline, color: Colors.red, size: 48),
-                                const SizedBox(height: 12),
-                                Text(_error!,
-                                    style: const TextStyle(color: Colors.white70)),
-                                const SizedBox(height: 20),
-                                ElevatedButton.icon(
-                                  style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFFE50914)),
-                                  onPressed: _loadChannels,
-                                  icon: const Icon(Icons.refresh),
-                                  label: const Text('Tekrar Dene'),
-                                ),
-                              ],
-                            ),
-                          )
+                            child: Padding(
+                              padding: const EdgeInsets.all(32),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.cloud_off, color: Colors.white24, size: 64),
+                                  const SizedBox(height: 16),
+                                  const Text('Liste yuklenemedi',
+                                      style: TextStyle(color: Colors.white, fontSize: 16,
+                                          fontWeight: FontWeight.bold)),
+                                  const SizedBox(height: 8),
+                                  Text(_error!,
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                                  const SizedBox(height: 24),
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFFE50914),
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 24, vertical: 12),
+                                        shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(10))),
+                                    onPressed: _loadChannels,
+                                    icon: const Icon(Icons.refresh, size: 18),
+                                    label: const Text('Tekrar Dene'),
+                                  ),
+                                ],
+                              ),
+                            ))
                         : Column(
                             children: [
+                              // Grup filtreleri
                               SizedBox(
-                                height: 40,
+                                height: 38,
                                 child: ListView.builder(
                                   scrollDirection: Axis.horizontal,
-                                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                                  padding: const EdgeInsets.symmetric(horizontal: 12),
                                   itemCount: _groups.length,
                                   itemBuilder: (_, i) {
                                     final g = _groups[i];
-                                    final selected = g == _selectedGroup;
+                                    final sel = g == _selectedGroup;
                                     return Padding(
-                                      padding: const EdgeInsets.only(right: 8),
-                                      child: ChoiceChip(
-                                        label: Text(g,
-                                            style: TextStyle(
-                                                color: selected ? Colors.white : Colors.white54,
-                                                fontSize: 12)),
-                                        selected: selected,
-                                        onSelected: (_) => _selectGroup(g),
-                                        selectedColor: const Color(0xFFE50914),
-                                        backgroundColor: const Color(0xFF1A1A1A),
-                                        side: BorderSide.none,
+                                      padding: const EdgeInsets.only(right: 6),
+                                      child: GestureDetector(
+                                        onTap: () => _selectGroup(g),
+                                        child: AnimatedContainer(
+                                          duration: const Duration(milliseconds: 200),
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 14, vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color: sel
+                                                ? const Color(0xFFE50914)
+                                                : const Color(0xFF1E1E1E),
+                                            borderRadius: BorderRadius.circular(20),
+                                          ),
+                                          child: Text(g,
+                                              style: TextStyle(
+                                                  color: sel ? Colors.white : Colors.white54,
+                                                  fontSize: 12,
+                                                  fontWeight: sel
+                                                      ? FontWeight.bold
+                                                      : FontWeight.normal)),
+                                        ),
                                       ),
                                     );
                                   },
@@ -368,51 +514,30 @@ jobs:
                               const SizedBox(height: 4),
                               Padding(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 14, vertical: 2),
+                                    horizontal: 16, vertical: 4),
                                 child: Row(children: [
                                   Text('${_filtered.length} kanal',
                                       style: const TextStyle(
-                                          color: Colors.white38, fontSize: 12)),
+                                          color: Colors.white30, fontSize: 11)),
                                 ]),
                               ),
                               Expanded(
                                 child: ListView.builder(
+                                  controller: _scrollCtrl,
                                   itemCount: _filtered.length,
                                   itemBuilder: (_, i) {
                                     final ch = _filtered[i];
-                                    return ListTile(
-                                      contentPadding: const EdgeInsets.symmetric(
-                                          horizontal: 14, vertical: 4),
-                                      leading: ClipRRect(
-                                        borderRadius: BorderRadius.circular(8),
-                                        child: ch.logo != null && ch.logo!.isNotEmpty
-                                            ? CachedNetworkImage(
-                                                imageUrl: ch.logo!,
-                                                width: 52, height: 52,
-                                                fit: BoxFit.contain,
-                                                placeholder: (_, __) => _logoPlaceholder(),
-                                                errorWidget: (_, __, ___) => _logoPlaceholder(),
-                                              )
-                                            : _logoPlaceholder(),
-                                      ),
-                                      title: Text(ch.name,
-                                          style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w500),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis),
-                                      subtitle: ch.group != null
-                                          ? Text(ch.group!,
-                                              style: const TextStyle(
-                                                  color: Colors.white38, fontSize: 11))
-                                          : null,
-                                      trailing: const Icon(Icons.play_circle_outline,
-                                          color: Color(0xFFE50914)),
+                                    return _ChannelTile(
+                                      channel: ch,
                                       onTap: () => Navigator.push(
                                         context,
-                                        MaterialPageRoute(
-                                          builder: (_) => PlayerScreen(channel: ch),
+                                        PageRouteBuilder(
+                                          pageBuilder: (_, __, ___) =>
+                                              PlayerScreen(channel: ch),
+                                          transitionsBuilder: (_, anim, __, child) =>
+                                              FadeTransition(opacity: anim, child: child),
+                                          transitionDuration:
+                                              const Duration(milliseconds: 300),
                                         ),
                                       ),
                                     );
@@ -425,6 +550,72 @@ jobs:
             }
           }
 
+          class _ChannelTile extends StatelessWidget {
+            final Channel channel;
+            final VoidCallback onTap;
+            const _ChannelTile({required this.channel, required this.onTap});
+
+            Widget _logo() => Container(
+              width: 48, height: 48,
+              decoration: BoxDecoration(
+                color: const Color(0xFF242424),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.tv, color: Colors.white24, size: 24),
+            );
+
+            @override
+            Widget build(BuildContext context) {
+              return InkWell(
+                onTap: onTap,
+                splashColor: const Color(0xFFE50914).withOpacity(0.1),
+                highlightColor: const Color(0xFFE50914).withOpacity(0.05),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  child: Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: channel.logo != null && channel.logo!.isNotEmpty
+                            ? CachedNetworkImage(
+                                imageUrl: channel.logo!,
+                                width: 48, height: 48,
+                                fit: BoxFit.contain,
+                                placeholder: (_, __) => _logo(),
+                                errorWidget: (_, __, ___) => _logo(),
+                              )
+                            : _logo(),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(channel.name,
+                                style: const TextStyle(
+                                    color: Colors.white, fontSize: 13,
+                                    fontWeight: FontWeight.w500),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis),
+                            if (channel.group != null)
+                              Text(channel.group!,
+                                  style: const TextStyle(
+                                      color: Colors.white30, fontSize: 11),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.play_circle_outline,
+                          color: Color(0xFFE50914), size: 22),
+                    ],
+                  ),
+                ),
+              );
+            }
+          }
+
+          // ── PLAYER ────────────────────────────────────────────────────────────
           class PlayerScreen extends StatefulWidget {
             final Channel channel;
             const PlayerScreen({super.key, required this.channel});
@@ -433,127 +624,296 @@ jobs:
           }
 
           class _PlayerScreenState extends State<PlayerScreen> {
-            VideoPlayerController? _vpCtrl;
-            ChewieController? _chewieCtrl;
+            BetterPlayerController? _playerCtrl;
             bool _loading = true;
             String? _error;
+            StreamSubscription? _orientSub;
+            bool _isLandscape = false;
 
             @override
             void initState() {
               super.initState();
+              WakelockPlus.enable();
+              _listenOrientation();
               _initPlayer();
+            }
+
+            void _listenOrientation() {
+              _orientSub = NativeDeviceOrientationCommunicator()
+                  .onOrientationChanged(useSensor: true)
+                  .listen((o) {
+                final land = o == NativeDeviceOrientation.landscapeLeft ||
+                    o == NativeDeviceOrientation.landscapeRight;
+                if (land != _isLandscape) {
+                  setState(() => _isLandscape = land);
+                  if (land) {
+                    SystemChrome.setPreferredOrientations([
+                      DeviceOrientation.landscapeLeft,
+                      DeviceOrientation.landscapeRight,
+                    ]);
+                    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+                  } else {
+                    SystemChrome.setPreferredOrientations([
+                      DeviceOrientation.portraitUp,
+                    ]);
+                    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+                  }
+                }
+              });
+            }
+
+            Map<String, String> _buildHeaders() {
+              final ch = widget.channel;
+              final headers = <String, String>{};
+
+              // User-Agent
+              final ua = ch.userAgent ??
+                  'Mozilla/5.0 (Linux; Android 11; Mobile) AppleWebKit/537.36 '
+                  '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
+              headers['User-Agent'] = ua;
+
+              // Referrer
+              if (ch.referrer != null && ch.referrer!.isNotEmpty) {
+                headers['Referer'] = ch.referrer!;
+              } else {
+                // Otomatik: stream URL'sinden host al
+                try {
+                  final uri = Uri.parse(ch.url);
+                  headers['Referer'] = '${uri.scheme}://${uri.host}/';
+                } catch (_) {}
+              }
+
+              // Origin
+              if (ch.origin != null && ch.origin!.isNotEmpty) {
+                headers['Origin'] = ch.origin!;
+              } else {
+                try {
+                  final uri = Uri.parse(ch.url);
+                  headers['Origin'] = '${uri.scheme}://${uri.host}';
+                } catch (_) {}
+              }
+
+              return headers;
             }
 
             Future<void> _initPlayer() async {
               setState(() { _loading = true; _error = null; });
               try {
-                _chewieCtrl?.dispose();
-                _vpCtrl?.dispose();
+                _playerCtrl?.dispose();
 
-                final ctrl = VideoPlayerController.networkUrl(
-                    Uri.parse(widget.channel.url));
-                await ctrl.initialize();
+                final headers = _buildHeaders();
+                final isHls = widget.channel.url.contains('.m3u8') ||
+                    widget.channel.url.contains('hls') ||
+                    widget.channel.url.contains('playlist');
 
-                _chewieCtrl = ChewieController(
-                  videoPlayerController: ctrl,
-                  autoPlay: true,
-                  looping: false,
-                  allowFullScreen: true,
-                  allowMuting: true,
-                  showControlsOnInitialize: true,
-                  deviceOrientationsOnEnterFullScreen: [
-                    DeviceOrientation.landscapeLeft,
-                    DeviceOrientation.landscapeRight,
-                  ],
-                  deviceOrientationsAfterFullScreen: [
-                    DeviceOrientation.portraitUp,
-                  ],
-                  placeholder: Container(color: Colors.black),
-                  materialProgressColors: ChewieProgressColors(
-                    playedColor: const Color(0xFFE50914),
-                    handleColor: const Color(0xFFE50914),
-                    backgroundColor: Colors.white24,
-                    bufferedColor: Colors.white38,
+                final dataSource = BetterPlayerDataSource(
+                  BetterPlayerDataSourceType.network,
+                  widget.channel.url,
+                  videoFormat: isHls
+                      ? BetterPlayerVideoFormat.hls
+                      : BetterPlayerVideoFormat.other,
+                  headers: headers,
+                  liveStream: true,
+                  notificationConfiguration:
+                      BetterPlayerNotificationConfiguration(
+                    showNotification: true,
+                    title: widget.channel.name,
+                    author: widget.channel.group ?? 'TinetV',
                   ),
                 );
 
-                setState(() { _vpCtrl = ctrl; _loading = false; });
+                final ctrl = BetterPlayerController(
+                  BetterPlayerConfiguration(
+                    autoPlay: true,
+                    looping: false,
+                    aspectRatio: 16 / 9,
+                    fit: BoxFit.contain,
+                    fullScreenByDefault: false,
+                    allowedScreenSleep: false,
+                    autoDetectFullscreenDeviceOrientation: false,
+                    autoDetectFullscreenAspectRatio: true,
+                    controlsConfiguration: const BetterPlayerControlsConfiguration(
+                      enableFullscreen: true,
+                      enableMute: true,
+                      enablePlayPause: true,
+                      enableProgressBar: false,
+                      enableSkips: false,
+                      enableSubtitles: false,
+                      enableQualities: false,
+                      enableAudioTracks: false,
+                      enableOverflowMenu: false,
+                      showControlsOnInitialize: false,
+                      playerTheme: BetterPlayerTheme.material,
+                      controlBarColor: Colors.transparent,
+                      iconsColor: Colors.white,
+                      playIcon: Icons.play_arrow,
+                      pauseIcon: Icons.pause,
+                      muteIcon: Icons.volume_off,
+                      unMuteIcon: Icons.volume_up,
+                      fullscreenEnableIcon: Icons.fullscreen,
+                      fullscreenDisableIcon: Icons.fullscreen_exit,
+                      loadingWidget: SizedBox.shrink(),
+                    ),
+                    routePageBuilder: (context, animation, _, provider) {
+                      return AnimatedBuilder(
+                        animation: animation,
+                        builder: (_, __) => _FullscreenPage(provider: provider),
+                      );
+                    },
+                  ),
+                  betterPlayerDataSource: dataSource,
+                );
+
+                setState(() { _playerCtrl = ctrl; _loading = false; });
               } catch (e) {
-                setState(() { _error = 'Yayin acilamadi:\n$e'; _loading = false; });
+                setState(() { _error = e.toString(); _loading = false; });
               }
             }
 
             @override
             void dispose() {
-              _chewieCtrl?.dispose();
-              _vpCtrl?.dispose();
+              _orientSub?.cancel();
+              _playerCtrl?.dispose();
+              WakelockPlus.disable();
+              SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+              SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
               super.dispose();
             }
 
             @override
             Widget build(BuildContext context) {
+              final isLand = MediaQuery.of(context).orientation == Orientation.landscape;
+
               return Scaffold(
                 backgroundColor: Colors.black,
-                appBar: AppBar(
-                  backgroundColor: Colors.black,
-                  leading: IconButton(
-                    icon: const Icon(Icons.arrow_back, color: Colors.white),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                  title: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(widget.channel.name,
-                          style: const TextStyle(
-                              color: Colors.white, fontSize: 15,
-                              fontWeight: FontWeight.bold),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
-                      if (widget.channel.group != null)
-                        Text(widget.channel.group!,
-                            style: const TextStyle(
-                                color: Colors.white38, fontSize: 11)),
-                    ],
-                  ),
-                ),
+                appBar: isLand
+                    ? null
+                    : AppBar(
+                        backgroundColor: Colors.black,
+                        leading: IconButton(
+                          icon: const Icon(Icons.arrow_back, color: Colors.white),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                        title: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(widget.channel.name,
+                                style: const TextStyle(
+                                    color: Colors.white, fontSize: 14,
+                                    fontWeight: FontWeight.bold),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis),
+                            if (widget.channel.group != null)
+                              Text(widget.channel.group!,
+                                  style: const TextStyle(
+                                      color: Colors.white38, fontSize: 11)),
+                          ],
+                        ),
+                      ),
                 body: _loading
                     ? const Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            CircularProgressIndicator(color: Color(0xFFE50914)),
-                            SizedBox(height: 16),
-                            Text('Yayin yukleniyor...',
-                                style: TextStyle(color: Colors.white54)),
+                            CircularProgressIndicator(
+                                color: Color(0xFFE50914), strokeWidth: 2),
+                            SizedBox(height: 14),
+                            Text('Baglaniliyor...',
+                                style: TextStyle(color: Colors.white38, fontSize: 12)),
                           ],
-                        ),
-                      )
+                        ))
                     : _error != null
                         ? Center(
                             child: Padding(
-                              padding: const EdgeInsets.all(24),
+                              padding: const EdgeInsets.all(28),
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  const Icon(Icons.signal_wifi_off,
-                                      color: Colors.red, size: 56),
+                                  const Icon(Icons.signal_wifi_statusbar_connected_no_internet_4,
+                                      color: Colors.white24, size: 56),
                                   const SizedBox(height: 16),
+                                  const Text('Yayin acilamadi',
+                                      style: TextStyle(
+                                          color: Colors.white, fontSize: 15,
+                                          fontWeight: FontWeight.bold)),
+                                  const SizedBox(height: 8),
                                   Text(_error!,
                                       textAlign: TextAlign.center,
-                                      style: const TextStyle(color: Colors.white70)),
+                                      style: const TextStyle(
+                                          color: Colors.white38, fontSize: 11),
+                                      maxLines: 3,
+                                      overflow: TextOverflow.ellipsis),
                                   const SizedBox(height: 24),
                                   ElevatedButton.icon(
                                     style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(0xFFE50914)),
+                                        backgroundColor: const Color(0xFFE50914),
+                                        foregroundColor: Colors.white,
+                                        shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(10))),
                                     onPressed: _initPlayer,
-                                    icon: const Icon(Icons.refresh),
+                                    icon: const Icon(Icons.refresh, size: 18),
                                     label: const Text('Tekrar Dene'),
                                   ),
                                 ],
                               ),
-                            ),
-                          )
-                        : Chewie(controller: _chewieCtrl!),
+                            ))
+                        : Column(
+                            children: [
+                              AspectRatio(
+                                aspectRatio: isLand
+                                    ? MediaQuery.of(context).size.aspectRatio
+                                    : 16 / 9,
+                                child: BetterPlayer(controller: _playerCtrl!),
+                              ),
+                              if (!isLand)
+                                Expanded(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(16),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(widget.channel.name,
+                                            style: const TextStyle(
+                                                color: Colors.white, fontSize: 16,
+                                                fontWeight: FontWeight.bold)),
+                                        if (widget.channel.group != null)
+                                          Padding(
+                                            padding: const EdgeInsets.only(top: 4),
+                                            child: Text(widget.channel.group!,
+                                                style: const TextStyle(
+                                                    color: Colors.white38,
+                                                    fontSize: 12)),
+                                          ),
+                                        const SizedBox(height: 16),
+                                        Row(
+                                          children: [
+                                            const Icon(Icons.rotate_90_degrees_ccw,
+                                                color: Colors.white24, size: 14),
+                                            const SizedBox(width: 6),
+                                            const Text('Tam ekran icin telefonu yan ceviriniz',
+                                                style: TextStyle(
+                                                    color: Colors.white24,
+                                                    fontSize: 11)),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+              );
+            }
+          }
+
+          class _FullscreenPage extends StatelessWidget {
+            final BetterPlayerControllerProvider provider;
+            const _FullscreenPage({required this.provider});
+            @override
+            Widget build(BuildContext context) {
+              return Scaffold(
+                backgroundColor: Colors.black,
+                body: provider,
               );
             }
           }
@@ -566,6 +926,7 @@ jobs:
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.INTERNET"/>
               <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+              <uses-permission android:name="android.permission.WAKE_LOCK"/>
               <application
                   android:label="TinetV"
                   android:name="${applicationName}"
@@ -577,6 +938,7 @@ jobs:
                       android:launchMode="singleTop"
                       android:taskAffinity=""
                       android:theme="@style/LaunchTheme"
+                      android:screenOrientation="sensor"
                       android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
                       android:hardwareAccelerated="true"
                       android:windowSoftInputMode="adjustResize">
