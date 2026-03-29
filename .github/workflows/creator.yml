@@ -57,6 +57,21 @@ jobs:
             uses-material-design: true
           PUBSPEC
 
+      - name: build.gradle guncelle (minSdk 22, compileSdk 36)
+        run: |
+          GRADLE_FILE="tinetv_app/android/app/build.gradle"
+          # minSdkVersion 21 -> 22
+          sed -i 's/minSdkVersion 21/minSdkVersion 22/' "$GRADLE_FILE"
+          sed -i 's/minSdk 21/minSdk 22/' "$GRADLE_FILE"
+          # compileSdkVersion -> 36
+          sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 36/' "$GRADLE_FILE"
+          sed -i 's/compileSdk [0-9]*/compileSdk 36/' "$GRADLE_FILE"
+          # targetSdkVersion -> 36
+          sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 36/' "$GRADLE_FILE"
+          sed -i 's/targetSdk [0-9]*/targetSdk 36/' "$GRADLE_FILE"
+          echo "=== build.gradle ==="
+          cat "$GRADLE_FILE"
+
       - name: main.dart yaz
         run: |
           cat > tinetv_app/lib/main.dart << 'MAINDART'
@@ -84,7 +99,6 @@ jobs:
             final String? userAgent;
             final String? referrer;
             final String? origin;
-
             Channel({
               required this.name,
               required this.url,
@@ -108,50 +122,37 @@ jobs:
                 name = null; logo = null; group = null;
                 userAgent = null; referrer = null; origin = null;
 
-                final logoMatch = RegExp(r'tvg-logo="([^"]*)"').firstMatch(line);
-                final groupMatch = RegExp(r'group-title="([^"]*)"').firstMatch(line);
-                final uaMatch = RegExp(r'user-agent="([^"]*)"', caseSensitive: false).firstMatch(line);
-                final refMatch = RegExp(r'referrer="([^"]*)"', caseSensitive: false).firstMatch(line);
-                final origMatch = RegExp(r'origin="([^"]*)"', caseSensitive: false).firstMatch(line);
+                logo = RegExp(r'tvg-logo="([^"]*)"').firstMatch(line)?.group(1);
+                group = RegExp(r'group-title="([^"]*)"').firstMatch(line)?.group(1);
+                userAgent = RegExp(r'user-agent="([^"]*)"', caseSensitive: false).firstMatch(line)?.group(1);
+                referrer = RegExp(r'referrer="([^"]*)"', caseSensitive: false).firstMatch(line)?.group(1);
+                origin = RegExp(r'origin="([^"]*)"', caseSensitive: false).firstMatch(line)?.group(1);
 
-                logo = logoMatch?.group(1);
-                group = groupMatch?.group(1);
-                userAgent = uaMatch?.group(1);
-                referrer = refMatch?.group(1);
-                origin = origMatch?.group(1);
-
-                final commaIdx = line.lastIndexOf(',');
-                if (commaIdx != -1) name = line.substring(commaIdx + 1).trim();
+                final ci = line.lastIndexOf(',');
+                if (ci != -1) name = line.substring(ci + 1).trim();
 
               } else if (line.startsWith('#EXTVLCOPT') && name != null) {
-                // VLC options: http-user-agent, http-referrer
-                final uaOpt = RegExp(r'http-user-agent=(.+)', caseSensitive: false).firstMatch(line);
-                final refOpt = RegExp(r'http-referrer=(.+)', caseSensitive: false).firstMatch(line);
-                if (uaOpt != null) userAgent = uaOpt.group(1)?.trim();
-                if (refOpt != null) referrer = refOpt.group(1)?.trim();
+                final ua = RegExp(r'http-user-agent=(.+)', caseSensitive: false).firstMatch(line)?.group(1)?.trim();
+                final ref = RegExp(r'http-referrer=(.+)', caseSensitive: false).firstMatch(line)?.group(1)?.trim();
+                if (ua != null) userAgent = ua;
+                if (ref != null) referrer = ref;
 
               } else if (line.startsWith('http') && name != null) {
-                // URL'de pipe varsa ayir: url|User-Agent=...&Referer=...
                 String url = line;
                 if (line.contains('|')) {
                   final parts = line.split('|');
                   url = parts[0].trim();
                   final opts = parts[1];
-                  final uaPipe = RegExp(r'[Uu]ser-[Aa]gent=([^&\s]+)').firstMatch(opts);
-                  final refPipe = RegExp(r'[Rr]eferer=([^&\s]+)').firstMatch(opts);
-                  final origPipe = RegExp(r'[Oo]rigin=([^&\s]+)').firstMatch(opts);
-                  if (uaPipe != null) userAgent ??= Uri.decodeComponent(uaPipe.group(1)!);
-                  if (refPipe != null) referrer ??= Uri.decodeComponent(refPipe.group(1)!);
-                  if (origPipe != null) origin ??= Uri.decodeComponent(origPipe.group(1)!);
+                  final ua = RegExp(r'[Uu]ser-[Aa]gent=([^&\s]+)').firstMatch(opts)?.group(1);
+                  final ref = RegExp(r'[Rr]eferer=([^&\s]+)').firstMatch(opts)?.group(1);
+                  final orig = RegExp(r'[Oo]rigin=([^&\s]+)').firstMatch(opts)?.group(1);
+                  if (ua != null) userAgent ??= Uri.decodeComponent(ua);
+                  if (ref != null) referrer ??= Uri.decodeComponent(ref);
+                  if (orig != null) origin ??= Uri.decodeComponent(orig);
                 }
                 channels.add(Channel(
-                  name: name,
-                  url: url,
-                  logo: logo,
-                  group: group,
-                  userAgent: userAgent,
-                  referrer: referrer,
-                  origin: origin,
+                  name: name, url: url, logo: logo, group: group,
+                  userAgent: userAgent, referrer: referrer, origin: origin,
                 ));
                 name = null;
               }
@@ -201,8 +202,7 @@ jobs:
             @override
             void initState() {
               super.initState();
-              _ctrl = AnimationController(
-                  vsync: this, duration: const Duration(milliseconds: 1200));
+              _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200));
               _scale = Tween(begin: 0.7, end: 1.0)
                   .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack));
               _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeIn);
@@ -243,24 +243,20 @@ jobs:
                                 end: Alignment.bottomRight,
                               ),
                               borderRadius: BorderRadius.circular(20),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(0xFFE50914).withOpacity(0.4),
-                                  blurRadius: 30, spreadRadius: 5,
-                                ),
-                              ],
+                              boxShadow: [BoxShadow(
+                                color: const Color(0xFFE50914).withOpacity(0.4),
+                                blurRadius: 30, spreadRadius: 5,
+                              )],
                             ),
                             child: const Icon(Icons.live_tv, size: 58, color: Colors.white),
                           ),
                           const SizedBox(height: 22),
                           const Text('TinetV',
-                              style: TextStyle(
-                                  color: Colors.white, fontSize: 32,
+                              style: TextStyle(color: Colors.white, fontSize: 32,
                                   fontWeight: FontWeight.bold, letterSpacing: 4)),
                           const SizedBox(height: 6),
                           const Text('CANLI YAYIN',
-                              style: TextStyle(
-                                  color: Color(0xFFE50914), fontSize: 11,
+                              style: TextStyle(color: Color(0xFFE50914), fontSize: 11,
                                   letterSpacing: 6, fontWeight: FontWeight.w500)),
                           const SizedBox(height: 50),
                           SizedBox(
@@ -317,10 +313,9 @@ jobs:
             Future<void> _loadChannels() async {
               setState(() { _loading = true; _error = null; });
               try {
-                final res = await http.get(Uri.parse(_m3uUrl),
-                    headers: {
-                      'User-Agent': 'Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36',
-                    }).timeout(const Duration(seconds: 25));
+                final res = await http.get(Uri.parse(_m3uUrl), headers: {
+                  'User-Agent': 'Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36',
+                }).timeout(const Duration(seconds: 25));
                 if (res.statusCode == 200) {
                   final channels = parseM3U(res.body);
                   final groupSet = <String>{};
@@ -344,10 +339,9 @@ jobs:
               final q = _searchCtrl.text.toLowerCase();
               setState(() {
                 _filtered = _all.where((c) {
-                  final gMatch = _selectedGroup == 'Tumu' ||
-                      (c.group ?? 'Diger') == _selectedGroup;
-                  final nMatch = c.name.toLowerCase().contains(q);
-                  return gMatch && nMatch;
+                  final gm = _selectedGroup == 'Tumu' || (c.group ?? 'Diger') == _selectedGroup;
+                  final nm = c.name.toLowerCase().contains(q);
+                  return gm && nm;
                 }).toList();
               });
             }
@@ -356,8 +350,7 @@ jobs:
               setState(() => _selectedGroup = g);
               _applyFilter();
               _scrollCtrl.animateTo(0,
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeOut);
+                  duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
             }
 
             Widget _logoPlaceholder() => Container(
@@ -376,28 +369,24 @@ jobs:
                 appBar: AppBar(
                   backgroundColor: const Color(0xFF0A0A0A),
                   titleSpacing: 16,
-                  title: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(5),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE50914),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Icon(Icons.live_tv, size: 16, color: Colors.white),
+                  title: Row(children: [
+                    Container(
+                      padding: const EdgeInsets.all(5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE50914),
+                        borderRadius: BorderRadius.circular(6),
                       ),
-                      const SizedBox(width: 10),
-                      const Text('TinetV',
-                          style: TextStyle(
-                              color: Colors.white, fontWeight: FontWeight.bold,
-                              fontSize: 20)),
-                    ],
-                  ),
+                      child: const Icon(Icons.live_tv, size: 16, color: Colors.white),
+                    ),
+                    const SizedBox(width: 10),
+                    const Text('TinetV',
+                        style: TextStyle(color: Colors.white,
+                            fontWeight: FontWeight.bold, fontSize: 20)),
+                  ]),
                   actions: [
                     IconButton(
                       icon: const Icon(Icons.refresh, color: Colors.white54),
                       onPressed: _loadChannels,
-                      tooltip: 'Yenile',
                     ),
                   ],
                   bottom: PreferredSize(
@@ -430,122 +419,111 @@ jobs:
                   ),
                 ),
                 body: _loading
-                    ? const Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            CircularProgressIndicator(color: Color(0xFFE50914)),
-                            SizedBox(height: 16),
-                            Text('Liste yukleniyor...',
-                                style: TextStyle(color: Colors.white38, fontSize: 13)),
-                          ],
-                        ))
+                    ? const Center(child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          CircularProgressIndicator(color: Color(0xFFE50914)),
+                          SizedBox(height: 16),
+                          Text('Liste yukleniyor...',
+                              style: TextStyle(color: Colors.white38, fontSize: 13)),
+                        ]))
                     : _error != null
-                        ? Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(32),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(Icons.cloud_off, color: Colors.white24, size: 64),
-                                  const SizedBox(height: 16),
-                                  const Text('Liste yuklenemedi',
-                                      style: TextStyle(color: Colors.white, fontSize: 16,
-                                          fontWeight: FontWeight.bold)),
-                                  const SizedBox(height: 8),
-                                  Text(_error!,
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(color: Colors.white38, fontSize: 12)),
-                                  const SizedBox(height: 24),
-                                  ElevatedButton.icon(
-                                    style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(0xFFE50914),
-                                        foregroundColor: Colors.white,
+                        ? Center(child: Padding(
+                            padding: const EdgeInsets.all(32),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.cloud_off, color: Colors.white24, size: 64),
+                                const SizedBox(height: 16),
+                                const Text('Liste yuklenemedi',
+                                    style: TextStyle(color: Colors.white,
+                                        fontSize: 16, fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 8),
+                                Text(_error!,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                                const SizedBox(height: 24),
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFFE50914),
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 24, vertical: 12),
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(10))),
+                                  onPressed: _loadChannels,
+                                  icon: const Icon(Icons.refresh, size: 18),
+                                  label: const Text('Tekrar Dene'),
+                                ),
+                              ],
+                            )))
+                        : Column(children: [
+                            SizedBox(
+                              height: 38,
+                              child: ListView.builder(
+                                scrollDirection: Axis.horizontal,
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                itemCount: _groups.length,
+                                itemBuilder: (_, i) {
+                                  final g = _groups[i];
+                                  final sel = g == _selectedGroup;
+                                  return Padding(
+                                    padding: const EdgeInsets.only(right: 6),
+                                    child: GestureDetector(
+                                      onTap: () => _selectGroup(g),
+                                      child: AnimatedContainer(
+                                        duration: const Duration(milliseconds: 200),
                                         padding: const EdgeInsets.symmetric(
-                                            horizontal: 24, vertical: 12),
-                                        shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(10))),
-                                    onPressed: _loadChannels,
-                                    icon: const Icon(Icons.refresh, size: 18),
-                                    label: const Text('Tekrar Dene'),
-                                  ),
-                                ],
-                              ),
-                            ))
-                        : Column(
-                            children: [
-                              // Grup filtreleri
-                              SizedBox(
-                                height: 38,
-                                child: ListView.builder(
-                                  scrollDirection: Axis.horizontal,
-                                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                                  itemCount: _groups.length,
-                                  itemBuilder: (_, i) {
-                                    final g = _groups[i];
-                                    final sel = g == _selectedGroup;
-                                    return Padding(
-                                      padding: const EdgeInsets.only(right: 6),
-                                      child: GestureDetector(
-                                        onTap: () => _selectGroup(g),
-                                        child: AnimatedContainer(
-                                          duration: const Duration(milliseconds: 200),
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 14, vertical: 6),
-                                          decoration: BoxDecoration(
-                                            color: sel
-                                                ? const Color(0xFFE50914)
-                                                : const Color(0xFF1E1E1E),
-                                            borderRadius: BorderRadius.circular(20),
-                                          ),
-                                          child: Text(g,
-                                              style: TextStyle(
-                                                  color: sel ? Colors.white : Colors.white54,
-                                                  fontSize: 12,
-                                                  fontWeight: sel
-                                                      ? FontWeight.bold
-                                                      : FontWeight.normal)),
+                                            horizontal: 14, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: sel
+                                              ? const Color(0xFFE50914)
+                                              : const Color(0xFF1E1E1E),
+                                          borderRadius: BorderRadius.circular(20),
                                         ),
+                                        child: Text(g,
+                                            style: TextStyle(
+                                                color: sel ? Colors.white : Colors.white54,
+                                                fontSize: 12,
+                                                fontWeight: sel
+                                                    ? FontWeight.bold
+                                                    : FontWeight.normal)),
                                       ),
-                                    );
-                                  },
-                                ),
+                                    ),
+                                  );
+                                },
                               ),
-                              const SizedBox(height: 4),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 4),
-                                child: Row(children: [
-                                  Text('${_filtered.length} kanal',
-                                      style: const TextStyle(
-                                          color: Colors.white30, fontSize: 11)),
-                                ]),
-                              ),
-                              Expanded(
-                                child: ListView.builder(
-                                  controller: _scrollCtrl,
-                                  itemCount: _filtered.length,
-                                  itemBuilder: (_, i) {
-                                    final ch = _filtered[i];
-                                    return _ChannelTile(
-                                      channel: ch,
-                                      onTap: () => Navigator.push(
-                                        context,
-                                        PageRouteBuilder(
-                                          pageBuilder: (_, __, ___) =>
-                                              PlayerScreen(channel: ch),
-                                          transitionsBuilder: (_, anim, __, child) =>
-                                              FadeTransition(opacity: anim, child: child),
-                                          transitionDuration:
-                                              const Duration(milliseconds: 300),
-                                        ),
+                            ),
+                            const SizedBox(height: 4),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                              child: Row(children: [
+                                Text('${_filtered.length} kanal',
+                                    style: const TextStyle(color: Colors.white30, fontSize: 11)),
+                              ]),
+                            ),
+                            Expanded(
+                              child: ListView.builder(
+                                controller: _scrollCtrl,
+                                itemCount: _filtered.length,
+                                itemBuilder: (_, i) {
+                                  final ch = _filtered[i];
+                                  return _ChannelTile(
+                                    channel: ch,
+                                    onTap: () => Navigator.push(
+                                      context,
+                                      PageRouteBuilder(
+                                        pageBuilder: (_, __, ___) => PlayerScreen(channel: ch),
+                                        transitionsBuilder: (_, anim, __, child) =>
+                                            FadeTransition(opacity: anim, child: child),
+                                        transitionDuration: const Duration(milliseconds: 300),
                                       ),
-                                    );
-                                  },
-                                ),
+                                    ),
+                                  );
+                                },
                               ),
-                            ],
-                          ),
+                            ),
+                          ]),
               );
             }
           }
@@ -572,44 +550,38 @@ jobs:
                 highlightColor: const Color(0xFFE50914).withOpacity(0.05),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  child: Row(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: channel.logo != null && channel.logo!.isNotEmpty
-                            ? CachedNetworkImage(
-                                imageUrl: channel.logo!,
-                                width: 48, height: 48,
-                                fit: BoxFit.contain,
-                                placeholder: (_, __) => _logo(),
-                                errorWidget: (_, __, ___) => _logo(),
-                              )
-                            : _logo(),
+                  child: Row(children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: channel.logo != null && channel.logo!.isNotEmpty
+                          ? CachedNetworkImage(
+                              imageUrl: channel.logo!,
+                              width: 48, height: 48,
+                              fit: BoxFit.contain,
+                              placeholder: (_, __) => _logo(),
+                              errorWidget: (_, __, ___) => _logo(),
+                            )
+                          : _logo(),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(channel.name,
+                              style: const TextStyle(color: Colors.white, fontSize: 13,
+                                  fontWeight: FontWeight.w500),
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                          if (channel.group != null)
+                            Text(channel.group!,
+                                style: const TextStyle(color: Colors.white30, fontSize: 11),
+                                maxLines: 1, overflow: TextOverflow.ellipsis),
+                        ],
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(channel.name,
-                                style: const TextStyle(
-                                    color: Colors.white, fontSize: 13,
-                                    fontWeight: FontWeight.w500),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis),
-                            if (channel.group != null)
-                              Text(channel.group!,
-                                  style: const TextStyle(
-                                      color: Colors.white30, fontSize: 11),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis),
-                          ],
-                        ),
-                      ),
-                      const Icon(Icons.play_circle_outline,
-                          color: Color(0xFFE50914), size: 22),
-                    ],
-                  ),
+                    ),
+                    const Icon(Icons.play_circle_outline,
+                        color: Color(0xFFE50914), size: 22),
+                  ]),
                 ),
               );
             }
@@ -627,8 +599,7 @@ jobs:
             BetterPlayerController? _playerCtrl;
             bool _loading = true;
             String? _error;
-            StreamSubscription? _orientSub;
-            bool _isLandscape = false;
+            StreamSubscription<NativeDeviceOrientation>? _orientSub;
 
             @override
             void initState() {
@@ -644,78 +615,52 @@ jobs:
                   .listen((o) {
                 final land = o == NativeDeviceOrientation.landscapeLeft ||
                     o == NativeDeviceOrientation.landscapeRight;
-                if (land != _isLandscape) {
-                  setState(() => _isLandscape = land);
-                  if (land) {
-                    SystemChrome.setPreferredOrientations([
-                      DeviceOrientation.landscapeLeft,
-                      DeviceOrientation.landscapeRight,
-                    ]);
-                    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-                  } else {
-                    SystemChrome.setPreferredOrientations([
-                      DeviceOrientation.portraitUp,
-                    ]);
-                    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-                  }
+                if (land) {
+                  SystemChrome.setPreferredOrientations([
+                    DeviceOrientation.landscapeLeft,
+                    DeviceOrientation.landscapeRight,
+                  ]);
+                  SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+                } else {
+                  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+                  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
                 }
               });
             }
 
             Map<String, String> _buildHeaders() {
               final ch = widget.channel;
-              final headers = <String, String>{};
-
-              // User-Agent
-              final ua = ch.userAgent ??
+              final h = <String, String>{};
+              h['User-Agent'] = ch.userAgent ??
                   'Mozilla/5.0 (Linux; Android 11; Mobile) AppleWebKit/537.36 '
                   '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
-              headers['User-Agent'] = ua;
-
-              // Referrer
-              if (ch.referrer != null && ch.referrer!.isNotEmpty) {
-                headers['Referer'] = ch.referrer!;
-              } else {
-                // Otomatik: stream URL'sinden host al
-                try {
-                  final uri = Uri.parse(ch.url);
-                  headers['Referer'] = '${uri.scheme}://${uri.host}/';
-                } catch (_) {}
-              }
-
-              // Origin
-              if (ch.origin != null && ch.origin!.isNotEmpty) {
-                headers['Origin'] = ch.origin!;
-              } else {
-                try {
-                  final uri = Uri.parse(ch.url);
-                  headers['Origin'] = '${uri.scheme}://${uri.host}';
-                } catch (_) {}
-              }
-
-              return headers;
+              try {
+                final uri = Uri.parse(ch.url);
+                final base = '${uri.scheme}://${uri.host}';
+                h['Referer'] = ch.referrer ?? '$base/';
+                h['Origin'] = ch.origin ?? base;
+              } catch (_) {}
+              return h;
             }
 
             Future<void> _initPlayer() async {
               setState(() { _loading = true; _error = null; });
               try {
                 _playerCtrl?.dispose();
-
                 final headers = _buildHeaders();
-                final isHls = widget.channel.url.contains('.m3u8') ||
-                    widget.channel.url.contains('hls') ||
-                    widget.channel.url.contains('playlist');
+                final url = widget.channel.url;
+                final isHls = url.contains('.m3u8') ||
+                    url.contains('hls') || url.contains('playlist');
 
-                final dataSource = BetterPlayerDataSource(
+                final ds = BetterPlayerDataSource(
                   BetterPlayerDataSourceType.network,
-                  widget.channel.url,
+                  url,
                   videoFormat: isHls
                       ? BetterPlayerVideoFormat.hls
                       : BetterPlayerVideoFormat.other,
                   headers: headers,
                   liveStream: true,
-                  notificationConfiguration:
-                      BetterPlayerNotificationConfiguration(
+                  notificationConfiguration: BetterPlayerNotificationConfiguration(
                     showNotification: true,
                     title: widget.channel.name,
                     author: widget.channel.group ?? 'TinetV',
@@ -728,10 +673,10 @@ jobs:
                     looping: false,
                     aspectRatio: 16 / 9,
                     fit: BoxFit.contain,
-                    fullScreenByDefault: false,
                     allowedScreenSleep: false,
                     autoDetectFullscreenDeviceOrientation: false,
                     autoDetectFullscreenAspectRatio: true,
+                    fullScreenByDefault: false,
                     controlsConfiguration: const BetterPlayerControlsConfiguration(
                       enableFullscreen: true,
                       enableMute: true,
@@ -746,22 +691,10 @@ jobs:
                       playerTheme: BetterPlayerTheme.material,
                       controlBarColor: Colors.transparent,
                       iconsColor: Colors.white,
-                      playIcon: Icons.play_arrow,
-                      pauseIcon: Icons.pause,
-                      muteIcon: Icons.volume_off,
-                      unMuteIcon: Icons.volume_up,
-                      fullscreenEnableIcon: Icons.fullscreen,
-                      fullscreenDisableIcon: Icons.fullscreen_exit,
                       loadingWidget: SizedBox.shrink(),
                     ),
-                    routePageBuilder: (context, animation, _, provider) {
-                      return AnimatedBuilder(
-                        animation: animation,
-                        builder: (_, __) => _FullscreenPage(provider: provider),
-                      );
-                    },
                   ),
-                  betterPlayerDataSource: dataSource,
+                  betterPlayerDataSource: ds,
                 );
 
                 setState(() { _playerCtrl = ctrl; _loading = false; });
@@ -783,7 +716,6 @@ jobs:
             @override
             Widget build(BuildContext context) {
               final isLand = MediaQuery.of(context).orientation == Orientation.landscape;
-
               return Scaffold(
                 backgroundColor: Colors.black,
                 appBar: isLand
@@ -798,11 +730,9 @@ jobs:
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(widget.channel.name,
-                                style: const TextStyle(
-                                    color: Colors.white, fontSize: 14,
-                                    fontWeight: FontWeight.bold),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis),
+                                style: const TextStyle(color: Colors.white,
+                                    fontSize: 14, fontWeight: FontWeight.bold),
+                                maxLines: 1, overflow: TextOverflow.ellipsis),
                             if (widget.channel.group != null)
                               Text(widget.channel.group!,
                                   style: const TextStyle(
@@ -811,109 +741,81 @@ jobs:
                         ),
                       ),
                 body: _loading
-                    ? const Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            CircularProgressIndicator(
-                                color: Color(0xFFE50914), strokeWidth: 2),
-                            SizedBox(height: 14),
-                            Text('Baglaniliyor...',
-                                style: TextStyle(color: Colors.white38, fontSize: 12)),
-                          ],
-                        ))
+                    ? const Center(child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          CircularProgressIndicator(
+                              color: Color(0xFFE50914), strokeWidth: 2),
+                          SizedBox(height: 14),
+                          Text('Baglaniliyor...',
+                              style: TextStyle(color: Colors.white38, fontSize: 12)),
+                        ]))
                     : _error != null
-                        ? Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(28),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(Icons.signal_wifi_statusbar_connected_no_internet_4,
-                                      color: Colors.white24, size: 56),
-                                  const SizedBox(height: 16),
-                                  const Text('Yayin acilamadi',
-                                      style: TextStyle(
-                                          color: Colors.white, fontSize: 15,
-                                          fontWeight: FontWeight.bold)),
-                                  const SizedBox(height: 8),
-                                  Text(_error!,
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(
-                                          color: Colors.white38, fontSize: 11),
-                                      maxLines: 3,
-                                      overflow: TextOverflow.ellipsis),
-                                  const SizedBox(height: 24),
-                                  ElevatedButton.icon(
-                                    style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(0xFFE50914),
-                                        foregroundColor: Colors.white,
-                                        shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(10))),
-                                    onPressed: _initPlayer,
-                                    icon: const Icon(Icons.refresh, size: 18),
-                                    label: const Text('Tekrar Dene'),
-                                  ),
-                                ],
-                              ),
-                            ))
-                        : Column(
-                            children: [
-                              AspectRatio(
-                                aspectRatio: isLand
-                                    ? MediaQuery.of(context).size.aspectRatio
-                                    : 16 / 9,
-                                child: BetterPlayer(controller: _playerCtrl!),
-                              ),
-                              if (!isLand)
-                                Expanded(
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(16),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(widget.channel.name,
-                                            style: const TextStyle(
-                                                color: Colors.white, fontSize: 16,
-                                                fontWeight: FontWeight.bold)),
-                                        if (widget.channel.group != null)
-                                          Padding(
-                                            padding: const EdgeInsets.only(top: 4),
-                                            child: Text(widget.channel.group!,
-                                                style: const TextStyle(
-                                                    color: Colors.white38,
-                                                    fontSize: 12)),
-                                          ),
-                                        const SizedBox(height: 16),
-                                        Row(
-                                          children: [
-                                            const Icon(Icons.rotate_90_degrees_ccw,
-                                                color: Colors.white24, size: 14),
-                                            const SizedBox(width: 6),
-                                            const Text('Tam ekran icin telefonu yan ceviriniz',
-                                                style: TextStyle(
-                                                    color: Colors.white24,
-                                                    fontSize: 11)),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ),
+                        ? Center(child: Padding(
+                            padding: const EdgeInsets.all(28),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.wifi_off, color: Colors.white24, size: 56),
+                                const SizedBox(height: 16),
+                                const Text('Yayin acilamadi',
+                                    style: TextStyle(color: Colors.white,
+                                        fontSize: 15, fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 8),
+                                Text(_error!,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                        color: Colors.white38, fontSize: 11),
+                                    maxLines: 3, overflow: TextOverflow.ellipsis),
+                                const SizedBox(height: 24),
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFFE50914),
+                                      foregroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(10))),
+                                  onPressed: _initPlayer,
+                                  icon: const Icon(Icons.refresh, size: 18),
+                                  label: const Text('Tekrar Dene'),
                                 ),
-                            ],
-                          ),
-              );
-            }
-          }
-
-          class _FullscreenPage extends StatelessWidget {
-            final BetterPlayerControllerProvider provider;
-            const _FullscreenPage({required this.provider});
-            @override
-            Widget build(BuildContext context) {
-              return Scaffold(
-                backgroundColor: Colors.black,
-                body: provider,
+                              ],
+                            )))
+                        : isLand
+                            ? SizedBox.expand(
+                                child: BetterPlayer(controller: _playerCtrl!))
+                            : Column(children: [
+                                AspectRatio(
+                                  aspectRatio: 16 / 9,
+                                  child: BetterPlayer(controller: _playerCtrl!),
+                                ),
+                                Expanded(child: Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(widget.channel.name,
+                                          style: const TextStyle(color: Colors.white,
+                                              fontSize: 16, fontWeight: FontWeight.bold)),
+                                      if (widget.channel.group != null)
+                                        Padding(
+                                          padding: const EdgeInsets.only(top: 4),
+                                          child: Text(widget.channel.group!,
+                                              style: const TextStyle(
+                                                  color: Colors.white38, fontSize: 12)),
+                                        ),
+                                      const SizedBox(height: 16),
+                                      const Row(children: [
+                                        Icon(Icons.screen_rotation,
+                                            color: Colors.white24, size: 14),
+                                        SizedBox(width: 6),
+                                        Text('Tam ekran icin telefonu yan ceviriniz',
+                                            style: TextStyle(
+                                                color: Colors.white24, fontSize: 11)),
+                                      ]),
+                                    ],
+                                  ),
+                                )),
+                              ]),
               );
             }
           }
