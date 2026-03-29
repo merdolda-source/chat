@@ -57,20 +57,71 @@ jobs:
             uses-material-design: true
           PUBSPEC
 
-      - name: build.gradle guncelle (minSdk 22, compileSdk 36)
+      - name: app/build.gradle tamamen yaz
         run: |
-          GRADLE_FILE="tinetv_app/android/app/build.gradle"
-          # minSdkVersion 21 -> 22
-          sed -i 's/minSdkVersion 21/minSdkVersion 22/' "$GRADLE_FILE"
-          sed -i 's/minSdk 21/minSdk 22/' "$GRADLE_FILE"
-          # compileSdkVersion -> 36
-          sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 36/' "$GRADLE_FILE"
-          sed -i 's/compileSdk [0-9]*/compileSdk 36/' "$GRADLE_FILE"
-          # targetSdkVersion -> 36
-          sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 36/' "$GRADLE_FILE"
-          sed -i 's/targetSdk [0-9]*/targetSdk 36/' "$GRADLE_FILE"
-          echo "=== build.gradle ==="
-          cat "$GRADLE_FILE"
+          cat > tinetv_app/android/app/build.gradle << 'BUILDGRADLE'
+          plugins {
+              id "com.android.application"
+              id "kotlin-android"
+              id "dev.flutter.flutter-gradle-plugin"
+          }
+
+          def localProperties = new Properties()
+          def localPropertiesFile = rootProject.file('local.properties')
+          if (localPropertiesFile.exists()) {
+              localPropertiesFile.withReader('UTF-8') { reader ->
+                  localProperties.load(reader)
+              }
+          }
+
+          def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
+          if (flutterVersionCode == null) {
+              flutterVersionCode = '1'
+          }
+
+          def flutterVersionName = localProperties.getProperty('flutter.versionName')
+          if (flutterVersionName == null) {
+              flutterVersionName = '1.0'
+          }
+
+          android {
+              namespace "com.tinetv.tinetv"
+              compileSdk 36
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_1_8
+                  targetCompatibility JavaVersion.VERSION_1_8
+              }
+
+              kotlinOptions {
+                  jvmTarget = '1.8'
+              }
+
+              sourceSets {
+                  main.java.srcDirs += 'src/main/kotlin'
+              }
+
+              defaultConfig {
+                  applicationId "com.tinetv.tinetv"
+                  minSdk 22
+                  targetSdk 36
+                  versionCode flutterVersionCode.toInteger()
+                  versionName flutterVersionName
+              }
+
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.debug
+                      minifyEnabled false
+                      shrinkResources false
+                  }
+              }
+          }
+
+          flutter {
+              source '../..'
+          }
+          BUILDGRADLE
 
       - name: main.dart yaz
         run: |
@@ -121,22 +172,18 @@ jobs:
               if (line.startsWith('#EXTINF')) {
                 name = null; logo = null; group = null;
                 userAgent = null; referrer = null; origin = null;
-
                 logo = RegExp(r'tvg-logo="([^"]*)"').firstMatch(line)?.group(1);
                 group = RegExp(r'group-title="([^"]*)"').firstMatch(line)?.group(1);
                 userAgent = RegExp(r'user-agent="([^"]*)"', caseSensitive: false).firstMatch(line)?.group(1);
                 referrer = RegExp(r'referrer="([^"]*)"', caseSensitive: false).firstMatch(line)?.group(1);
                 origin = RegExp(r'origin="([^"]*)"', caseSensitive: false).firstMatch(line)?.group(1);
-
                 final ci = line.lastIndexOf(',');
                 if (ci != -1) name = line.substring(ci + 1).trim();
-
               } else if (line.startsWith('#EXTVLCOPT') && name != null) {
                 final ua = RegExp(r'http-user-agent=(.+)', caseSensitive: false).firstMatch(line)?.group(1)?.trim();
                 final ref = RegExp(r'http-referrer=(.+)', caseSensitive: false).firstMatch(line)?.group(1)?.trim();
                 if (ua != null) userAgent = ua;
                 if (ref != null) referrer = ref;
-
               } else if (line.startsWith('http') && name != null) {
                 String url = line;
                 if (line.contains('|')) {
