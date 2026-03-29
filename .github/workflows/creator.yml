@@ -1,4 +1,4 @@
-name: Build APK
+name: Build IPTV APK
 
 on:
   push:
@@ -32,7 +32,7 @@ jobs:
         run: |
           cat > tinetv_app/pubspec.yaml << 'PUBSPEC'
           name: tinetv
-          description: TinetV uygulaması
+          description: TinetV IPTV uygulaması
           publish_to: 'none'
           version: 1.0.0+1
 
@@ -42,7 +42,10 @@ jobs:
           dependencies:
             flutter:
               sdk: flutter
-            webview_flutter: ^4.7.0
+            video_player: ^2.8.6
+            chewie: ^1.8.1
+            http: ^1.2.1
+            cached_network_image: ^3.3.1
 
           dev_dependencies:
             flutter_test:
@@ -58,18 +61,48 @@ jobs:
           cat > tinetv_app/lib/main.dart << 'MAINDART'
           import 'package:flutter/material.dart';
           import 'package:flutter/services.dart';
-          import 'package:webview_flutter/webview_flutter.dart';
+          import 'package:http/http.dart' as http;
+          import 'package:video_player/video_player.dart';
+          import 'package:chewie/chewie.dart';
+          import 'package:cached_network_image/cached_network_image.dart';
 
           void main() {
             WidgetsFlutterBinding.ensureInitialized();
-            SystemChrome.setPreferredOrientations([
-              DeviceOrientation.portraitUp,
-              DeviceOrientation.landscapeLeft,
-              DeviceOrientation.landscapeRight,
-            ]);
             runApp(const MyApp());
           }
 
+          // ── MODEL ──────────────────────────────────────────────────────────────
+          class Channel {
+            final String name;
+            final String url;
+            final String? logo;
+            final String? group;
+            Channel({required this.name, required this.url, this.logo, this.group});
+          }
+
+          List<Channel> parseM3U(String content) {
+            final channels = <Channel>[];
+            final lines = content.split('\n');
+            String? name, logo, group;
+            for (var i = 0; i < lines.length; i++) {
+              final line = lines[i].trim();
+              if (line.startsWith('#EXTINF')) {
+                name = null; logo = null; group = null;
+                final logoMatch = RegExp(r'tvg-logo="([^"]*)"').firstMatch(line);
+                final groupMatch = RegExp(r'group-title="([^"]*)"').firstMatch(line);
+                logo = logoMatch?.group(1);
+                group = groupMatch?.group(1);
+                final commaIdx = line.lastIndexOf(',');
+                if (commaIdx != -1) name = line.substring(commaIdx + 1).trim();
+              } else if (line.startsWith('http') && name != null) {
+                channels.add(Channel(name: name, url: line, logo: logo, group: group));
+                name = null;
+              }
+            }
+            return channels;
+          }
+
+          // ── APP ───────────────────────────────────────────────────────────────
           class MyApp extends StatelessWidget {
             const MyApp({super.key});
             @override
@@ -78,7 +111,17 @@ jobs:
                 title: 'TinetV',
                 debugShowCheckedModeBanner: false,
                 theme: ThemeData(
-                  colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+                  brightness: Brightness.dark,
+                  scaffoldBackgroundColor: const Color(0xFF0F0F0F),
+                  colorScheme: const ColorScheme.dark(
+                    primary: Color(0xFFE50914),
+                    surface: Color(0xFF1A1A1A),
+                  ),
+                  appBarTheme: const AppBarTheme(
+                    backgroundColor: Color(0xFF0F0F0F),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                  ),
                   useMaterial3: true,
                 ),
                 home: const SplashScreen(),
@@ -86,6 +129,7 @@ jobs:
             }
           }
 
+          // ── SPLASH ────────────────────────────────────────────────────────────
           class SplashScreen extends StatefulWidget {
             const SplashScreen({super.key});
             @override
@@ -94,21 +138,20 @@ jobs:
 
           class _SplashScreenState extends State<SplashScreen>
               with SingleTickerProviderStateMixin {
-            late AnimationController _controller;
-            late Animation<double> _fadeAnim;
+            late AnimationController _ctrl;
+            late Animation<double> _fade;
 
             @override
             void initState() {
               super.initState();
-              _controller = AnimationController(
-                  vsync: this, duration: const Duration(seconds: 2));
-              _fadeAnim =
-                  CurvedAnimation(parent: _controller, curve: Curves.easeIn);
-              _controller.forward();
+              _ctrl = AnimationController(
+                  vsync: this, duration: const Duration(milliseconds: 1500));
+              _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeIn);
+              _ctrl.forward();
               Future.delayed(const Duration(seconds: 3), () {
                 if (mounted) {
                   Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(builder: (_) => const WebViewScreen()),
+                    MaterialPageRoute(builder: (_) => const ChannelListScreen()),
                   );
                 }
               });
@@ -116,42 +159,44 @@ jobs:
 
             @override
             void dispose() {
-              _controller.dispose();
+              _ctrl.dispose();
               super.dispose();
             }
 
             @override
             Widget build(BuildContext context) {
               return Scaffold(
-                backgroundColor: Colors.black,
+                backgroundColor: const Color(0xFF0F0F0F),
                 body: FadeTransition(
-                  opacity: _fadeAnim,
+                  opacity: _fade,
                   child: Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Container(
-                          width: 120,
-                          height: 120,
+                          width: 110,
+                          height: 110,
                           decoration: BoxDecoration(
-                            color: Colors.deepPurple,
-                            borderRadius: BorderRadius.circular(24),
+                            color: const Color(0xFFE50914),
+                            borderRadius: BorderRadius.circular(22),
                           ),
-                          child: const Icon(Icons.play_circle_fill,
-                              size: 80, color: Colors.white),
+                          child: const Icon(Icons.live_tv,
+                              size: 70, color: Colors.white),
                         ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 20),
                         const Text('TinetV',
                             style: TextStyle(
                                 color: Colors.white,
-                                fontSize: 32,
+                                fontSize: 34,
                                 fontWeight: FontWeight.bold,
-                                letterSpacing: 2)),
-                        const SizedBox(height: 8),
-                        const Text('tinetvresmi.site',
-                            style: TextStyle(color: Colors.white54, fontSize: 14)),
-                        const SizedBox(height: 48),
-                        const CircularProgressIndicator(color: Colors.deepPurple),
+                                letterSpacing: 3)),
+                        const SizedBox(height: 6),
+                        const Text('Canli Yayin',
+                            style: TextStyle(
+                                color: Colors.white38, fontSize: 13)),
+                        const SizedBox(height: 50),
+                        const CircularProgressIndicator(
+                            color: Color(0xFFE50914)),
                       ],
                     ),
                   ),
@@ -160,93 +205,420 @@ jobs:
             }
           }
 
-          class WebViewScreen extends StatefulWidget {
-            const WebViewScreen({super.key});
+          // ── CHANNEL LIST ──────────────────────────────────────────────────────
+          class ChannelListScreen extends StatefulWidget {
+            const ChannelListScreen({super.key});
             @override
-            State<WebViewScreen> createState() => _WebViewScreenState();
+            State<ChannelListScreen> createState() => _ChannelListScreenState();
           }
 
-          class _WebViewScreenState extends State<WebViewScreen> {
-            late final WebViewController _controller;
-            bool _isLoading = true;
-            bool _canGoBack = false;
-            bool _canGoForward = false;
+          class _ChannelListScreenState extends State<ChannelListScreen> {
+            static const String _m3uUrl =
+                'https://streams.uzunmuhalefet.com/lists/tr.m3u';
 
-            static const String _url = 'https://tinetvresmi.site';
+            List<Channel> _all = [];
+            List<Channel> _filtered = [];
+            List<String> _groups = [];
+            String _selectedGroup = 'Tumu';
+            bool _loading = true;
+            String? _error;
+            final _searchCtrl = TextEditingController();
 
             @override
             void initState() {
               super.initState();
-              _controller = WebViewController()
-                ..setJavaScriptMode(JavaScriptMode.unrestricted)
-                ..setBackgroundColor(Colors.black)
-                ..setNavigationDelegate(NavigationDelegate(
-                  onPageStarted: (_) => setState(() => _isLoading = true),
-                  onPageFinished: (_) async {
-                    setState(() => _isLoading = false);
-                    _canGoBack = await _controller.canGoBack();
-                    _canGoForward = await _controller.canGoForward();
-                    setState(() {});
-                  },
-                  onWebResourceError: (_) => setState(() => _isLoading = false),
-                ))
-                ..loadRequest(Uri.parse(_url));
+              _loadChannels();
+              _searchCtrl.addListener(_applyFilter);
+            }
+
+            @override
+            void dispose() {
+              _searchCtrl.dispose();
+              super.dispose();
+            }
+
+            Future<void> _loadChannels() async {
+              setState(() {
+                _loading = true;
+                _error = null;
+              });
+              try {
+                final res = await http
+                    .get(Uri.parse(_m3uUrl))
+                    .timeout(const Duration(seconds: 20));
+                if (res.statusCode == 200) {
+                  final channels = parseM3U(res.body);
+                  final groups = [
+                    'Tumu',
+                    ...{...channels.map((c) => c.group ?? 'Diger')}
+                  ];
+                  setState(() {
+                    _all = channels;
+                    _filtered = channels;
+                    _groups = groups;
+                    _loading = false;
+                  });
+                } else {
+                  setState(() {
+                    _error = 'Liste alinamadi (${res.statusCode})';
+                    _loading = false;
+                  });
+                }
+              } catch (e) {
+                setState(() {
+                  _error = 'Baglanti hatasi: $e';
+                  _loading = false;
+                });
+              }
+            }
+
+            void _applyFilter() {
+              final q = _searchCtrl.text.toLowerCase();
+              setState(() {
+                _filtered = _all.where((c) {
+                  final groupMatch = _selectedGroup == 'Tumu' ||
+                      (c.group ?? 'Diger') == _selectedGroup;
+                  final nameMatch = c.name.toLowerCase().contains(q);
+                  return groupMatch && nameMatch;
+                }).toList();
+              });
+            }
+
+            void _selectGroup(String g) {
+              setState(() => _selectedGroup = g);
+              _applyFilter();
             }
 
             @override
             Widget build(BuildContext context) {
-              return PopScope(
-                canPop: false,
-                onPopInvoked: (didPop) async {
-                  if (!didPop) {
-                    if (await _controller.canGoBack()) {
-                      _controller.goBack();
-                    } else {
-                      if (context.mounted) SystemNavigator.pop();
-                    }
-                  }
-                },
-                child: Scaffold(
-                  backgroundColor: Colors.black,
-                  appBar: AppBar(
-                    backgroundColor: Colors.black,
-                    foregroundColor: Colors.white,
-                    titleSpacing: 0,
-                    title: const Text('TinetV',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18)),
-                    actions: [
-                      IconButton(
-                        icon: Icon(Icons.arrow_back_ios,
-                            color: _canGoBack ? Colors.white : Colors.white30,
-                            size: 20),
-                        onPressed: _canGoBack ? () => _controller.goBack() : null,
-                      ),
-                      IconButton(
-                        icon: Icon(Icons.arrow_forward_ios,
-                            color: _canGoForward ? Colors.white : Colors.white30,
-                            size: 20),
-                        onPressed:
-                            _canGoForward ? () => _controller.goForward() : null,
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.refresh, color: Colors.white),
-                        onPressed: () => _controller.reload(),
-                      ),
-                    ],
-                  ),
-                  body: Stack(
-                    children: [
-                      WebViewWidget(controller: _controller),
-                      if (_isLoading)
-                        const Center(
-                          child: CircularProgressIndicator(color: Colors.deepPurple),
+              return Scaffold(
+                backgroundColor: const Color(0xFF0F0F0F),
+                appBar: AppBar(
+                  title: const Text('TinetV',
+                      style: TextStyle(
+                          color: Color(0xFFE50914),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 22)),
+                  actions: [
+                    IconButton(
+                      icon: const Icon(Icons.refresh, color: Colors.white),
+                      onPressed: _loadChannels,
+                    ),
+                  ],
+                  bottom: PreferredSize(
+                    preferredSize: const Size.fromHeight(50),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                      child: TextField(
+                        controller: _searchCtrl,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          hintText: 'Kanal ara...',
+                          hintStyle:
+                              const TextStyle(color: Colors.white38),
+                          prefixIcon: const Icon(Icons.search,
+                              color: Colors.white38),
+                          filled: true,
+                          fillColor: const Color(0xFF1A1A1A),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding:
+                              const EdgeInsets.symmetric(vertical: 0),
                         ),
+                      ),
+                    ),
+                  ),
+                ),
+                body: _loading
+                    ? const Center(
+                        child: CircularProgressIndicator(
+                            color: Color(0xFFE50914)))
+                    : _error != null
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.error_outline,
+                                    color: Colors.red, size: 48),
+                                const SizedBox(height: 12),
+                                Text(_error!,
+                                    style: const TextStyle(
+                                        color: Colors.white70)),
+                                const SizedBox(height: 20),
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                      backgroundColor:
+                                          const Color(0xFFE50914)),
+                                  onPressed: _loadChannels,
+                                  icon: const Icon(Icons.refresh),
+                                  label: const Text('Tekrar Dene'),
+                                ),
+                              ],
+                            ),
+                          )
+                        : Column(
+                            children: [
+                              SizedBox(
+                                height: 40,
+                                child: ListView.builder(
+                                  scrollDirection: Axis.horizontal,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10),
+                                  itemCount: _groups.length,
+                                  itemBuilder: (_, i) {
+                                    final g = _groups[i];
+                                    final selected = g == _selectedGroup;
+                                    return Padding(
+                                      padding:
+                                          const EdgeInsets.only(right: 8),
+                                      child: ChoiceChip(
+                                        label: Text(g,
+                                            style: TextStyle(
+                                                color: selected
+                                                    ? Colors.white
+                                                    : Colors.white54,
+                                                fontSize: 12)),
+                                        selected: selected,
+                                        onSelected: (_) => _selectGroup(g),
+                                        selectedColor:
+                                            const Color(0xFFE50914),
+                                        backgroundColor:
+                                            const Color(0xFF1A1A1A),
+                                        side: BorderSide.none,
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 2),
+                                child: Row(
+                                  children: [
+                                    Text('${_filtered.length} kanal',
+                                        style: const TextStyle(
+                                            color: Colors.white38,
+                                            fontSize: 12)),
+                                  ],
+                                ),
+                              ),
+                              Expanded(
+                                child: ListView.builder(
+                                  itemCount: _filtered.length,
+                                  itemBuilder: (_, i) {
+                                    final ch = _filtered[i];
+                                    return ListTile(
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                              horizontal: 14, vertical: 4),
+                                      leading: ClipRRect(
+                                        borderRadius:
+                                            BorderRadius.circular(8),
+                                        child: ch.logo != null &&
+                                                ch.logo!.isNotEmpty
+                                            ? CachedNetworkImage(
+                                                imageUrl: ch.logo!,
+                                                width: 52,
+                                                height: 52,
+                                                fit: BoxFit.contain,
+                                                placeholder: (_, __) =>
+                                                    _logoPlaceholder(),
+                                                errorWidget:
+                                                    (_, __, ___) =>
+                                                        _logoPlaceholder(),
+                                              )
+                                            : _logoPlaceholder(),
+                                      ),
+                                      title: Text(ch.name,
+                                          style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w500),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis),
+                                      subtitle: ch.group != null
+                                          ? Text(ch.group!,
+                                              style: const TextStyle(
+                                                  color: Colors.white38,
+                                                  fontSize: 11))
+                                          : null,
+                                      trailing: const Icon(
+                                          Icons.play_circle_outline,
+                                          color: Color(0xFFE50914)),
+                                      onTap: () => Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              PlayerScreen(channel: ch),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+              );
+            }
+
+            Widget _logoPlaceholder() => Container(
+                  width: 52,
+                  height: 52,
+                  color: const Color(0xFF1A1A1A),
+                  child: const Icon(Icons.tv,
+                      color: Colors.white24, size: 28),
+                );
+          }
+
+          // ── PLAYER ────────────────────────────────────────────────────────────
+          class PlayerScreen extends StatefulWidget {
+            final Channel channel;
+            const PlayerScreen({super.key, required this.channel});
+            @override
+            State<PlayerScreen> createState() => _PlayerScreenState();
+          }
+
+          class _PlayerScreenState extends State<PlayerScreen> {
+            VideoPlayerController? _vpCtrl;
+            ChewieController? _chewieCtrl;
+            bool _loading = true;
+            String? _error;
+
+            @override
+            void initState() {
+              super.initState();
+              _initPlayer();
+            }
+
+            Future<void> _initPlayer() async {
+              setState(() {
+                _loading = true;
+                _error = null;
+              });
+              try {
+                _chewieCtrl?.dispose();
+                _vpCtrl?.dispose();
+
+                final ctrl = VideoPlayerController.networkUrl(
+                    Uri.parse(widget.channel.url));
+                await ctrl.initialize();
+
+                _chewieCtrl = ChewieController(
+                  videoPlayerController: ctrl,
+                  autoPlay: true,
+                  looping: false,
+                  allowFullScreen: true,
+                  allowMuting: true,
+                  showControlsOnInitialize: true,
+                  deviceOrientationsOnEnterFullScreen: [
+                    DeviceOrientation.landscapeLeft,
+                    DeviceOrientation.landscapeRight,
+                  ],
+                  deviceOrientationsAfterFullScreen: [
+                    DeviceOrientation.portraitUp,
+                  ],
+                  placeholder: Container(color: Colors.black),
+                  materialProgressColors: ChewieProgressColors(
+                    playedColor: const Color(0xFFE50914),
+                    handleColor: const Color(0xFFE50914),
+                    backgroundColor: Colors.white24,
+                    bufferedColor: Colors.white38,
+                  ),
+                );
+
+                setState(() {
+                  _vpCtrl = ctrl;
+                  _loading = false;
+                });
+              } catch (e) {
+                setState(() {
+                  _error = 'Yayin acilamadi:\n$e';
+                  _loading = false;
+                });
+              }
+            }
+
+            @override
+            void dispose() {
+              _chewieCtrl?.dispose();
+              _vpCtrl?.dispose();
+              super.dispose();
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              return Scaffold(
+                backgroundColor: Colors.black,
+                appBar: AppBar(
+                  backgroundColor: Colors.black,
+                  leading: IconButton(
+                    icon:
+                        const Icon(Icons.arrow_back, color: Colors.white),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                  title: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(widget.channel.name,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                      if (widget.channel.group != null)
+                        Text(widget.channel.group!,
+                            style: const TextStyle(
+                                color: Colors.white38, fontSize: 11)),
                     ],
                   ),
                 ),
+                body: _loading
+                    ? const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CircularProgressIndicator(
+                                color: Color(0xFFE50914)),
+                            SizedBox(height: 16),
+                            Text('Yayin yukleniyor...',
+                                style:
+                                    TextStyle(color: Colors.white54)),
+                          ],
+                        ),
+                      )
+                    : _error != null
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Column(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.signal_wifi_off,
+                                      color: Colors.red, size: 56),
+                                  const SizedBox(height: 16),
+                                  Text(_error!,
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                          color: Colors.white70)),
+                                  const SizedBox(height: 24),
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                        backgroundColor:
+                                            const Color(0xFFE50914)),
+                                    onPressed: _initPlayer,
+                                    icon: const Icon(Icons.refresh),
+                                    label: const Text('Tekrar Dene'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        : Chewie(controller: _chewieCtrl!),
               );
             }
           }
@@ -286,7 +658,7 @@ jobs:
           </manifest>
           MANIFEST
 
-      - name: Bağımlılıkları yükle
+      - name: Bagimlilik yukle
         working-directory: tinetv_app
         run: flutter pub get
 
@@ -294,13 +666,13 @@ jobs:
         working-directory: tinetv_app
         run: flutter build apk --release --split-per-abi
 
-      - name: APK'yı Artifacts olarak yükle
+      - name: APK Artifacts yukle
         uses: actions/upload-artifact@v4
         with:
           name: tinetv-apk
           path: tinetv_app/build/app/outputs/flutter-apk/*.apk
 
-      - name: Release oluştur
+      - name: Release olustur
         uses: ncipollo/release-action@v1
         with:
           tag: v${{ github.run_number }}
