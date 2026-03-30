@@ -44,7 +44,7 @@ jobs:
               sdk: flutter
             http: ^1.2.1
             cached_network_image: ^3.3.1
-            better_player: ^0.0.84
+            video_player: ^2.8.6
             wakelock_plus: ^1.2.8
 
           dev_dependencies:
@@ -89,7 +89,6 @@ jobs:
               }
 
               kotlinOptions { jvmTarget = '1.8' }
-
               sourceSets { main.java.srcDirs += 'src/main/kotlin' }
 
               defaultConfig {
@@ -120,7 +119,7 @@ jobs:
           import 'package:flutter/services.dart';
           import 'package:http/http.dart' as http;
           import 'package:cached_network_image/cached_network_image.dart';
-          import 'package:better_player/better_player.dart';
+          import 'package:video_player/video_player.dart';
           import 'package:wakelock_plus/wakelock_plus.dart';
 
           void main() {
@@ -171,7 +170,7 @@ jobs:
                 final ref = RegExp(r'http-referrer=(.+)', caseSensitive: false).firstMatch(line)?.group(1)?.trim();
                 if (ua != null) userAgent = ua;
                 if (ref != null) referrer = ref;
-              } else if (line.startsWith('http') && name != null) {
+              } else if ((line.startsWith('http') || line.startsWith('rtmp') || line.startsWith('rtsp')) && name != null) {
                 String url = line;
                 if (line.contains('|')) {
                   final parts = line.split('|');
@@ -624,17 +623,17 @@ jobs:
           }
 
           class _PlayerScreenState extends State<PlayerScreen> {
-            BetterPlayerController? _playerCtrl;
+            VideoPlayerController? _vpc;
             bool _loading = true;
-            String? _error;
+            bool _hasError = false;
+            bool _showControls = true;
+            Timer? _hideTimer;
 
-            // Yon algılama: Flutter'in OrientationBuilder ile yapilir,
-            // hicbir native paket gerekmez.
             @override
             void initState() {
               super.initState();
               WakelockPlus.enable();
-              // Player ekraninda tum yonlere izin ver
+              // Tum yonlere izin ver - kullanici isterse yan cevirir
               SystemChrome.setPreferredOrientations([
                 DeviceOrientation.portraitUp,
                 DeviceOrientation.landscapeLeft,
@@ -659,194 +658,335 @@ jobs:
             }
 
             Future<void> _initPlayer() async {
-              setState(() { _loading = true; _error = null; });
+              if (!mounted) return;
+              setState(() { _loading = true; _hasError = false; });
+
+              // Onceki controller'i temizle
+              final old = _vpc;
+              _vpc = null;
+              try { await old?.dispose(); } catch (_) {}
+
               try {
-                _playerCtrl?.dispose();
                 final headers = _buildHeaders();
-                final url = widget.channel.url;
-                final isHls = url.contains('.m3u8') ||
-                    url.contains('hls') || url.contains('playlist');
+                final uri = Uri.parse(widget.channel.url);
 
-                final ds = BetterPlayerDataSource(
-                  BetterPlayerDataSourceType.network,
-                  url,
-                  videoFormat: isHls
-                      ? BetterPlayerVideoFormat.hls
-                      : BetterPlayerVideoFormat.other,
-                  headers: headers,
-                  liveStream: true,
-                  notificationConfiguration: BetterPlayerNotificationConfiguration(
-                    showNotification: true,
-                    title: widget.channel.name,
-                    author: widget.channel.group ?? 'TinetV',
-                  ),
+                final ctrl = VideoPlayerController.networkUrl(
+                  uri,
+                  httpHeaders: headers,
+                  videoPlayerOptions: VideoPlayerOptions(mixWithOthers: false),
                 );
 
-                final ctrl = BetterPlayerController(
-                  BetterPlayerConfiguration(
-                    autoPlay: true,
-                    looping: false,
-                    aspectRatio: 16 / 9,
-                    fit: BoxFit.contain,
-                    allowedScreenSleep: false,
-                    autoDetectFullscreenDeviceOrientation: true,
-                    autoDetectFullscreenAspectRatio: true,
-                    fullScreenByDefault: false,
-                    deviceOrientationsOnFullScreen: [
-                      DeviceOrientation.landscapeLeft,
-                      DeviceOrientation.landscapeRight,
-                    ],
-                    deviceOrientationsAfterFullScreen: [
-                      DeviceOrientation.portraitUp,
-                    ],
-                    controlsConfiguration: const BetterPlayerControlsConfiguration(
-                      enableFullscreen: true,
-                      enableMute: true,
-                      enablePlayPause: true,
-                      enableProgressBar: false,
-                      enableSkips: false,
-                      enableSubtitles: false,
-                      enableQualities: false,
-                      enableAudioTracks: false,
-                      enableOverflowMenu: false,
-                      showControlsOnInitialize: false,
-                      playerTheme: BetterPlayerTheme.material,
-                      controlBarColor: Colors.transparent,
-                      iconsColor: Colors.white,
-                      loadingWidget: SizedBox.shrink(),
-                    ),
-                  ),
-                  betterPlayerDataSource: ds,
+                // Hata listener - cokmeyi onle
+                ctrl.addListener(() {
+                  if (!mounted) return;
+                  final err = ctrl.value.errorDescription;
+                  if (err != null && !_hasError) {
+                    setState(() { _hasError = true; _loading = false; });
+                  }
+                });
+
+                await ctrl.initialize().timeout(
+                  const Duration(seconds: 20),
+                  onTimeout: () => throw Exception('Baglanti zaman asimi'),
                 );
 
-                setState(() { _playerCtrl = ctrl; _loading = false; });
+                if (!mounted) {
+                  ctrl.dispose();
+                  return;
+                }
+
+                await ctrl.setLooping(false);
+                await ctrl.play();
+
+                setState(() { _vpc = ctrl; _loading = false; _hasError = false; });
+                _startHideTimer();
               } catch (e) {
-                setState(() { _error = e.toString(); _loading = false; });
+                if (!mounted) return;
+                setState(() { _hasError = true; _loading = false; });
               }
+            }
+
+            void _startHideTimer() {
+              _hideTimer?.cancel();
+              _hideTimer = Timer(const Duration(seconds: 3), () {
+                if (mounted) setState(() => _showControls = false);
+              });
+            }
+
+            void _onTapVideo() {
+              setState(() => _showControls = !_showControls);
+              if (_showControls) _startHideTimer();
+            }
+
+            void _togglePlay() {
+              if (_vpc == null) return;
+              if (_vpc!.value.isPlaying) {
+                _vpc!.pause();
+                _hideTimer?.cancel();
+              } else {
+                _vpc!.play();
+                _startHideTimer();
+              }
+              setState(() {});
             }
 
             @override
             void dispose() {
-              _playerCtrl?.dispose();
+              _hideTimer?.cancel();
+              try { _vpc?.dispose(); } catch (_) {}
               WakelockPlus.disable();
               SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
               SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
               super.dispose();
             }
 
-            @override
-            Widget build(BuildContext context) {
-              return OrientationBuilder(
-                builder: (context, orientation) {
-                  final isLand = orientation == Orientation.landscape;
-                  if (isLand) {
-                    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-                  } else {
-                    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-                  }
-                  return Scaffold(
-                    backgroundColor: Colors.black,
-                    appBar: isLand
-                        ? null
-                        : AppBar(
-                            backgroundColor: Colors.black,
-                            leading: IconButton(
+            Widget _buildPlayer(bool isLand) {
+              if (_vpc == null || !_vpc!.value.isInitialized) {
+                return const SizedBox.shrink();
+              }
+              return AspectRatio(
+                aspectRatio: isLand
+                    ? (_vpc!.value.aspectRatio > 0 ? _vpc!.value.aspectRatio : 16 / 9)
+                    : 16 / 9,
+                child: VideoPlayer(_vpc!),
+              );
+            }
+
+            Widget _buildControls(bool isLand) {
+              if (!_showControls || _vpc == null) return const SizedBox.shrink();
+              final playing = _vpc!.value.isPlaying;
+              return AnimatedOpacity(
+                opacity: _showControls ? 1 : 0,
+                duration: const Duration(milliseconds: 200),
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.black54, Colors.transparent, Colors.black54],
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // Ust: kanal adi
+                      Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(children: [
+                          if (!isLand)
+                            IconButton(
                               icon: const Icon(Icons.arrow_back, color: Colors.white),
                               onPressed: () => Navigator.pop(context),
                             ),
-                            title: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(widget.channel.name,
-                                    style: const TextStyle(color: Colors.white,
-                                        fontSize: 14, fontWeight: FontWeight.bold),
-                                    maxLines: 1, overflow: TextOverflow.ellipsis),
-                                if (widget.channel.group != null)
-                                  Text(widget.channel.group!,
-                                      style: const TextStyle(
-                                          color: Colors.white38, fontSize: 11)),
-                              ],
+                          Expanded(
+                            child: Text(widget.channel.name,
+                                style: const TextStyle(color: Colors.white,
+                                    fontSize: 14, fontWeight: FontWeight.bold,
+                                    shadows: [Shadow(blurRadius: 4, color: Colors.black)]),
+                                maxLines: 1, overflow: TextOverflow.ellipsis),
+                          ),
+                        ]),
+                      ),
+                      // Orta: play/pause
+                      Center(
+                        child: GestureDetector(
+                          onTap: _togglePlay,
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.black45,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              playing ? Icons.pause : Icons.play_arrow,
+                              color: Colors.white, size: 40,
                             ),
                           ),
-                    body: _loading
-                        ? const Center(child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              CircularProgressIndicator(
-                                  color: Color(0xFFE50914), strokeWidth: 2),
-                              SizedBox(height: 14),
-                              Text('Baglaniliyor...',
-                                  style: TextStyle(color: Colors.white38, fontSize: 12)),
-                            ]))
-                        : _error != null
-                            ? Center(child: Padding(
-                                padding: const EdgeInsets.all(28),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    const Icon(Icons.wifi_off, color: Colors.white24, size: 56),
-                                    const SizedBox(height: 16),
-                                    const Text('Yayin acilamadi',
-                                        style: TextStyle(color: Colors.white,
-                                            fontSize: 15, fontWeight: FontWeight.bold)),
-                                    const SizedBox(height: 8),
-                                    Text(_error!,
-                                        textAlign: TextAlign.center,
-                                        style: const TextStyle(
-                                            color: Colors.white38, fontSize: 11),
-                                        maxLines: 3, overflow: TextOverflow.ellipsis),
-                                    const SizedBox(height: 24),
-                                    ElevatedButton.icon(
-                                      style: ElevatedButton.styleFrom(
-                                          backgroundColor: const Color(0xFFE50914),
-                                          foregroundColor: Colors.white,
-                                          shape: RoundedRectangleBorder(
-                                              borderRadius: BorderRadius.circular(10))),
-                                      onPressed: _initPlayer,
-                                      icon: const Icon(Icons.refresh, size: 18),
-                                      label: const Text('Tekrar Dene'),
-                                    ),
-                                  ],
-                                )))
-                            : isLand
-                                ? SizedBox.expand(
-                                    child: BetterPlayer(controller: _playerCtrl!))
-                                : Column(children: [
-                                    AspectRatio(
-                                      aspectRatio: 16 / 9,
-                                      child: BetterPlayer(controller: _playerCtrl!),
-                                    ),
-                                    Expanded(child: Padding(
-                                      padding: const EdgeInsets.all(16),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(widget.channel.name,
-                                              style: const TextStyle(color: Colors.white,
-                                                  fontSize: 16, fontWeight: FontWeight.bold)),
-                                          if (widget.channel.group != null)
-                                            Padding(
-                                              padding: const EdgeInsets.only(top: 4),
-                                              child: Text(widget.channel.group!,
-                                                  style: const TextStyle(
-                                                      color: Colors.white38, fontSize: 12)),
-                                            ),
-                                          const SizedBox(height: 16),
-                                          const Row(children: [
-                                            Icon(Icons.screen_rotation,
-                                                color: Colors.white24, size: 14),
-                                            SizedBox(width: 6),
-                                            Text('Tam ekran icin telefonu yan ceviriniz',
-                                                style: TextStyle(
-                                                    color: Colors.white24, fontSize: 11)),
-                                          ]),
-                                        ],
-                                      ),
-                                    )),
-                                  ]),
-                  );
-                },
+                        ),
+                      ),
+                      // Alt: tam ekran ipucu
+                      Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            Icon(
+                              isLand ? Icons.fullscreen_exit : Icons.fullscreen,
+                              color: Colors.white70, size: 20,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              isLand ? 'Portre icin dik tut' : 'Tam ekran icin yan cevir',
+                              style: const TextStyle(color: Colors.white70, fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               );
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              return OrientationBuilder(builder: (context, orientation) {
+                final isLand = orientation == Orientation.landscape;
+
+                if (isLand) {
+                  SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+                } else {
+                  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+                }
+
+                return Scaffold(
+                  backgroundColor: Colors.black,
+                  // AppBar sadece portrette ve kontroller gorundugunde
+                  appBar: (!isLand && _showControls && !_loading && !_hasError)
+                      ? AppBar(
+                          backgroundColor: Colors.black,
+                          leading: IconButton(
+                            icon: const Icon(Icons.arrow_back, color: Colors.white),
+                            onPressed: () => Navigator.pop(context),
+                          ),
+                          title: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(widget.channel.name,
+                                  style: const TextStyle(color: Colors.white,
+                                      fontSize: 14, fontWeight: FontWeight.bold),
+                                  maxLines: 1, overflow: TextOverflow.ellipsis),
+                              if (widget.channel.group != null)
+                                Text(widget.channel.group!,
+                                    style: const TextStyle(
+                                        color: Colors.white38, fontSize: 11)),
+                            ],
+                          ),
+                        )
+                      : (!isLand && (_loading || _hasError))
+                          ? AppBar(
+                              backgroundColor: Colors.black,
+                              leading: IconButton(
+                                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                                onPressed: () => Navigator.pop(context),
+                              ),
+                              title: Text(widget.channel.name,
+                                  style: const TextStyle(color: Colors.white,
+                                      fontSize: 14, fontWeight: FontWeight.bold),
+                                  maxLines: 1, overflow: TextOverflow.ellipsis),
+                            )
+                          : null,
+                  body: _loading
+                      // ── YUKLENIYOR ──────────────────────────────────────────
+                      ? const Center(child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CircularProgressIndicator(
+                                color: Color(0xFFE50914), strokeWidth: 2),
+                            SizedBox(height: 16),
+                            Text('Baglaniyor...',
+                                style: TextStyle(color: Colors.white54, fontSize: 13)),
+                          ]))
+                      // ── HATA ────────────────────────────────────────────────
+                      : _hasError
+                          ? Center(child: Padding(
+                              padding: const EdgeInsets.all(28),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.wifi_off, color: Colors.white24, size: 56),
+                                  const SizedBox(height: 16),
+                                  const Text('Yayin acilamadi',
+                                      style: TextStyle(color: Colors.white,
+                                          fontSize: 15, fontWeight: FontWeight.bold)),
+                                  const SizedBox(height: 8),
+                                  const Text('Bu kanal su an yayinda olmayabilir.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(color: Colors.white38, fontSize: 12)),
+                                  const SizedBox(height: 24),
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFFE50914),
+                                        foregroundColor: Colors.white,
+                                        shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(10))),
+                                    onPressed: _initPlayer,
+                                    icon: const Icon(Icons.refresh, size: 18),
+                                    label: const Text('Tekrar Dene'),
+                                  ),
+                                ],
+                              )))
+                          // ── PLAYER ──────────────────────────────────────────
+                          : isLand
+                              // TAM EKRAN (yatay)
+                              ? GestureDetector(
+                                  onTap: _onTapVideo,
+                                  child: SizedBox.expand(
+                                    child: Stack(
+                                      alignment: Alignment.center,
+                                      children: [
+                                        Center(child: _buildPlayer(true)),
+                                        if (_showControls)
+                                          Positioned.fill(child: _buildControls(true)),
+                                      ],
+                                    ),
+                                  ),
+                                )
+                              // PORTRE
+                              : GestureDetector(
+                                  onTap: _onTapVideo,
+                                  child: Column(children: [
+                                    Stack(
+                                      alignment: Alignment.center,
+                                      children: [
+                                        AspectRatio(
+                                          aspectRatio: 16 / 9,
+                                          child: Container(color: Colors.black,
+                                              child: _buildPlayer(false)),
+                                        ),
+                                        if (_showControls)
+                                          Positioned.fill(
+                                            child: AspectRatio(
+                                              aspectRatio: 16 / 9,
+                                              child: _buildControls(false),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                    Expanded(
+                                      child: Container(
+                                        color: const Color(0xFF0A0A0A),
+                                        padding: const EdgeInsets.all(16),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(widget.channel.name,
+                                                style: const TextStyle(color: Colors.white,
+                                                    fontSize: 16, fontWeight: FontWeight.bold)),
+                                            if (widget.channel.group != null)
+                                              Padding(
+                                                padding: const EdgeInsets.only(top: 4),
+                                                child: Text(widget.channel.group!,
+                                                    style: const TextStyle(
+                                                        color: Colors.white38, fontSize: 12)),
+                                              ),
+                                            const SizedBox(height: 16),
+                                            const Row(children: [
+                                              Icon(Icons.screen_rotation,
+                                                  color: Colors.white24, size: 14),
+                                              SizedBox(width: 6),
+                                              Text('Tam ekran icin telefonu yan ceviriniz',
+                                                  style: TextStyle(
+                                                      color: Colors.white24, fontSize: 11)),
+                                            ]),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ]),
+                                ),
+                );
+              });
             }
           }
           MAINDART
