@@ -41,11 +41,14 @@ $AYAR = [
     ],
 
     // --- TARAMA GENISLIGI ---
-    'sayfa_derinlik'  => 6,     // /page/2/ ... /page/N/  (0 = kapali)
-    'gun_geri'        => 1,     // kac gun geriye arsiv taransin
-    'gun_ileri'       => 1,     // kac gun ileriye arsiv taransin
+    // NOT (hdmac.cloudtroid.org, 2026-10): /page/N/ her zaman anasayfayla ayni 50 maci
+    // dondurur, gun arsivleri (/YYYY/MM/DD/) 404 verir, /amp/ anasayfanin kopyasidir.
+    // Bu yuzden varsayilan olarak kapali; site yapisi degisirse ?sayfa=3&gun=1&amp=1 ile acilir.
+    'sayfa_derinlik'  => 0,     // /page/2/ ... /page/N/  (0 = kapali)
+    'gun_geri'        => 0,     // kac gun geriye arsiv taransin
+    'gun_ileri'       => 0,     // kac gun ileriye arsiv taransin
     'arsiv_sayfa'     => 3,     // gun arsivlerinde kac sayfa
-    'amp_tara'        => true,  // AMP surumunu de tara
+    'amp_tara'        => false, // AMP surumunu de tara (anasayfa kopyasi)
     'sitemap_tara'    => false, // post-sitemap.xml (eski maclari da getirir, yavas)
     'sitemap_limit'   => 120,
 
@@ -67,6 +70,8 @@ $AYAR = [
     'grup_modu'       => 'saat',             // saat | kategori | ikon
     'varsayilan_logo' => 'https://i.hizliresim.com/gm27zjl.png',
     'kaynaksiz_ekle'  => true,  // yayin linki cozulemese bile kayda ekle (detay json)
+    'kanonik_takip'   => false, // true ise site <link rel=canonical> ile baska alan adi bildirirse ona gec
+                                // (hdmac.cloudtroid.org canonical'i cloudtroid.org'dur; secilen base korunsun)
     'otomatik_kaynak' => true,  // site kapanirsa kaynak_bulucu.php ile yeni adresi bul
     'oynatici_onar'   => true,  // olu oynatici sunucusunu calisan bir sunucuyla degistir
     'dogrula'         => true,  // bulunan m3u8 gercekten aciliyor mu diye test et
@@ -272,9 +277,56 @@ function ikon_etiketi($ikon) {
         'bol.png' => 'Bolivya', 'isr.png' => 'İsrail', 'izl.png' => 'İzlanda',
         'kol.png' => 'Kolombiya', 'rom.png' => 'Romanya', 'rus.png' => 'Rusya',
         'sam.png' => 'Güney Amerika', 'uru.png' => 'Uruguay', 'ven.png' => 'Venezuela',
+        // hdmac.cloudtroid.org /bayrak/ klasoru
+        'hol.png' => 'Hollanda', 'fra.png' => 'Fransa', 'isvi.png' => 'İsviçre',
+        'pol.png' => 'Polonya', 'per.png' => 'Peru', 'mek.png' => 'Meksika',
+        'kib.png' => 'Kıbrıs', 'ita.png' => 'İtalya', 'isp.png' => 'İspanya',
+        'ing.png' => 'İngiltere', 'por.png' => 'Portekiz', 'mac.png' => 'Macaristan',
+        'hir.png' => 'Hırvatistan', 'euro.png' => 'Avrupa', 'bel.png' => 'Belçika',
+        'avu.png' => 'Avusturya', 'alm.png' => 'Almanya', 'abd.png' => 'ABD',
     ];
     $dosya = basename(parse_url($ikon, PHP_URL_PATH) ?: $ikon);
     return $harita[$dosya] ?? ucfirst(pathinfo($dosya, PATHINFO_FILENAME));
+}
+
+/** Turkce tarih ("18 Eylül 2026") -> "18.09.2026"; bulunamazsa null */
+function baslik_tarihi($ham) {
+    static $aylar = ['ocak'=>1,'şubat'=>2,'mart'=>3,'nisan'=>4,'mayıs'=>5,'haziran'=>6,'temmuz'=>7,
+                     'ağustos'=>8,'eylül'=>9,'ekim'=>10,'kasım'=>11,'aralık'=>12];
+    $t = html_entity_decode(strip_tags($ham), ENT_QUOTES, 'UTF-8');
+    if (preg_match('/(\d{1,2})\s+(Ocak|Şubat|Mart|Nisan|Mayıs|Haziran|Temmuz|Ağustos|Eylül|Ekim|Kasım|Aralık)\s+(\d{4})/ui', $t, $m)) {
+        return sprintf('%02d.%02d.%04d', $m[1], $aylar[mb_strtolower($m[2], 'UTF-8')], $m[3]);
+    }
+    return null;
+}
+
+/**
+ * Yayin sayfasi adresini tekillestirir:
+ *  - AMP cache sarmalini acar  (…cdn.ampproject.org/c/s/HOST/yol/amp/?c=1 -> https://HOST/yol/)
+ *  - /amp/ ekini ve sorgu parametrelerini atar
+ */
+function yayin_url_normalize($url) {
+    if (preg_match('#^https?://[^/]*ampproject\.org/[a-z]/(?:s/)?(.+)$#i', $url, $m)) $url = 'https://' . $m[1];
+    $url = preg_replace('#[?\#].*$#', '', $url);
+    $url = preg_replace('#/amp/?$#i', '/', $url);
+    return rtrim($url, '/') . '/';
+}
+
+/** Tekillestirme anahtari: alan adindan bagimsiz yol (hdmac.* ve cloudtroid.org ayni yayindir) */
+function yayin_anahtar($url) {
+    return rtrim(parse_url(yayin_url_normalize($url), PHP_URL_PATH) ?: $url, '/');
+}
+
+/** Yayin sayfasindan kategori (Futbol/Basketbol...) ve baslik cikarir (anasayfada bulunamazsa) */
+function sayfa_meta($html) {
+    $meta = ['kategori' => '', 'baslik' => ''];
+    if (preg_match('/entry-meta-categories[^>]*>.*?rel=["\']category tag["\'][^>]*>(.*?)<\/a>/is', $html, $m)) {
+        $meta['kategori'] = trim(strip_tags($m[1]));
+    }
+    if (preg_match('/<h1[^>]*class=["\'][^"\']*entry-title[^"\']*["\'][^>]*>(.*?)<\/h1>/is', $html, $m)) {
+        $meta['baslik'] = $m[1];
+    }
+    return $meta;
 }
 
 // ====================== 1) TARANACAK SAYFALARI URET =========================
@@ -502,6 +554,7 @@ function yayin_coz($oynatici_url, $referer, $derinlik = 0) {
             // Tarayicinin gonderecegi referer/origin oynatici sayfasinin alan adidir
             'alan'     => $oyn_alan ?: alan_adi($adaylar[0]),
             'cdn'      => alan_adi($adaylar[0]),
+            'http'     => $r['code'],
             'yontem'   => 'dogrudan',
         ];
     }
@@ -541,7 +594,9 @@ function yayin_coz($oynatici_url, $referer, $derinlik = 0) {
             'oynatici' => $efektif,
             'alan'     => $oyn_alan,
             'cdn'      => $oyn_alan,
-            'yontem'   => 'tahmin',
+            'http'     => $r['code'],
+            // jyayin6.vip kanal yayinda degilken 404 "Kanal bulunamadi" doner; tahmin dogrulamayla elenir
+            'yontem'   => ($r['code'] == 404 || $r['code'] == 403) ? 'tahmin-http' . $r['code'] : 'tahmin',
         ];
     }
     return null;
@@ -574,7 +629,7 @@ if ($bulucu_var) {
         }
     } else {
         // Adres yasiyor; canonical farkliysa guncel olani kullan
-        if (preg_match('#rel=["\']canonical["\']\s+href=["\'](https?://[^/"\']+)#i', $on['body'], $cm)) {
+        if ($AYAR['kanonik_takip'] && preg_match('#rel=["\']canonical["\']\s+href=["\'](https?://[^/"\']+)#i', $on['body'], $cm)) {
             $kanon = rtrim($cm[1], '/') . '/';
             if (parse_url($kanon, PHP_URL_HOST) !== parse_url($AYAR['base_url'], PHP_URL_HOST)) {
                 log_yaz("Site guncel adresini bildirdi: $kanon");
@@ -607,9 +662,11 @@ if ($AYAR['sitemap_tara']) {
 // --- Ogeleri topla + tekilleştir ---
 $ogeler = [];
 foreach ($indirilen as $kaynak => $r) {
-    if (!$r['body']) continue;
+    // 404 sayfalarinda yan menu ("Son yazilar") linkleri mac sanilmasin
+    if (!$r['body'] || $r['code'] != 200) { dbg("atlandi (HTTP {$r['code']}): $kaynak"); continue; }
     foreach (ogeleri_ayikla($r['body'], $r['url'] ?: $kaynak) as $o) {
-        $anahtar = rtrim($o['link'], '/');
+        $o['link'] = yayin_url_normalize($o['link']);
+        $anahtar = yayin_anahtar($o['link']);
         if (isset($ogeler[$anahtar])) {
             // Daha zengin veri geldiyse gucellendir (saat/ikon/kategori bos kalmasin)
             foreach (['saat', 'ikon', 'kategori'] as $alan) {
@@ -625,9 +682,10 @@ foreach ($indirilen as $kaynak => $r) {
 foreach ($sitemap_linkleri as $u) {
     $u = trim($u);
     if (!preg_match('#/\d{4}/\d{2}/\d{2}/#', $u)) continue;
-    if (isset($ogeler[rtrim($u, '/')])) continue;
-    $ogeler[rtrim($u, '/')] = [
-        'link' => $u, 'ham' => ucwords(str_replace('-', ' ', basename(rtrim($u, '/')))),
+    $u = trim($u);
+    if (isset($ogeler[yayin_anahtar($u)])) continue;
+    $ogeler[yayin_anahtar($u)] = [
+        'link' => yayin_url_normalize($u), 'ham' => ucwords(str_replace('-', ' ', basename(rtrim($u, '/')))),
         'saat' => '00:00', 'ikon' => '', 'kategori' => '', 'blok' => '',
     ];
 }
@@ -682,7 +740,13 @@ foreach ($ogeler as $i => $o) {
         }
     }
 
-    $etiket = $o['kategori'] ?: ikon_etiketi($o['ikon']);
+    // Kategori anasayfada yoksa (sitemap/AMP kaynakli) yayin sayfasindan al
+    if ($o['kategori'] === '' && $sayfa) {
+        $meta = sayfa_meta($sayfa);
+        $o['kategori'] = $meta['kategori'];
+    }
+    $ulke  = $o['ikon'] ? ikon_etiketi($o['ikon']) : '';
+    $etiket = $o['kategori'] ?: $ulke;
     $grup = match ($AYAR['grup_modu']) {
         'kategori' => $etiket ?: 'Diğer',
         'ikon'     => ikon_etiketi($o['ikon']) ?: 'Diğer',
@@ -699,8 +763,11 @@ foreach ($ogeler as $i => $o) {
         'ikon'      => $logo,
         'sayfa'     => $o['link'],
         'slug'      => basename(rtrim($o['link'], '/')),
-        'tarih'     => preg_match('#/(\d{4})/(\d{2})/(\d{2})/#', $o['link'], $dm) ? "$dm[3].$dm[2].$dm[1]" : date('d.m.Y'),
+        'ulke'      => ($ulke && $ulke !== $etiket) ? $ulke : '',
+        // Mac tarihi basliktadir ("... justintv izle 19 Ekim 2026"); URL'deki tarih yazinin yayin gunudur
+        'tarih'     => baslik_tarihi($o['ham']) ?: (preg_match('#/(\d{4})/(\d{2})/(\d{2})/#', $o['link'], $dm) ? "$dm[3].$dm[2].$dm[1]" : date('d.m.Y')),
         'oynatici'  => $res['oynatici'] ?? '',
+        'oynatici_http' => $res['http'] ?? 0,
         'm3u8'      => $res['m3u8'] ?? '',
         'alternatif'=> $res['hepsi'] ?? [],
         'yontem'    => $res['yontem'] ?? 'yok',
@@ -723,6 +790,7 @@ foreach ($ogeler as $i => $o) {
             'logo'         => $logo,
             'group'        => $grup,
             'category'     => $etiket,
+            'country'      => $kayit['ulke'],
             'time'         => $o['saat'],
             'date'         => $kayit['tarih'],
             'home_team'    => $ev,
